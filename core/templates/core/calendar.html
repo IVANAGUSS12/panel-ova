@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block title %}Calendario - Panel OVA{% endblock %}
+
+{% block content %}
+<section class="card calendar-card">
+  <div class="card-header">
+    <h2>Calendario de intervenciones</h2>
+    <p class="card-sub">
+      Vista mensual de las cirugías programadas. Hacé clic en un día o en un paciente para ver el detalle del día.
+    </p>
+  </div>
+
+  <div id="calendar"></div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const calendarEl = document.getElementById("calendar");
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: "dayGridMonth",
+      locale: "es",
+      height: "auto",
+      firstDay: 1,
+      dayMaxEvents: 3,
+      displayEventTime: false,
+      eventDisplay: "block",
+
+      headerToolbar: {
+        left: "title",
+        center: "",
+        right: "today prev,next",
+      },
+      buttonText: {
+        today: "Hoy",
+      },
+
+      // 👉 FullCalendar va a pedir los eventos a esta URL (JSON)
+      events: "{% url 'core:calendar_events' %}",
+
+      // Clic en un EVENTO -> vista diaria
+      eventClick: function (info) {
+        const dateStr = info.event.startStr.substring(0, 10);  // YYYY-MM-DD
+        window.location.href = "{% url 'core:calendar_day' %}" + "?date=" + dateStr;
+      },
+
+      // Clic en un día vacío -> misma vista diaria
+      dateClick: function (info) {
+        const dateStr = info.dateStr.substring(0, 10);
+        window.location.href = "{% url 'core:calendar_day' %}" + "?date=" + dateStr;
+      },
+    });
+
+    calendar.render();
+  });
+</script>
+{% endblock %}

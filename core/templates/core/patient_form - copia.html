@@ -1,0 +1,217 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Carga de paciente - Panel OVA{% endblock %}
+
+{% block content %}
+<section class="card card-form card-qr">
+  
+  <div class="card-header">
+    <h2>Carga de paciente</h2>
+    <p class="card-sub">
+      Complete los datos del paciente.<br>
+      <small>Complete patient details (Spanish / English).</small>
+    </p>
+  </div>
+
+  {% if success %}
+    <div class="alert-success">
+      <strong>Solicitud enviada correctamente.</strong><br>
+
+      ID de seguimiento / Tracking ID:
+      <span class="badge-id" style="font-size:22px;">{{ tracking_id }}</span>
+
+      <br><br>
+
+      <a href="/seguimiento/?id={{ tracking_id }}" 
+         class="btn-primary" 
+         style="margin-top:10px;display:inline-block;">
+         Ver estado de la solicitud
+      </a>
+
+      <p style="margin-top:10px;font-size:13px;">
+        Guarde este código para consultar el estado de su trámite.
+      </p>
+    </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="form-qr" id="qr-form">
+    {% csrf_token %}
+
+    <div class="form-grid">
+
+      <div class="form-group">
+        <label for="full_name">Nombre y Apellido / Full name</label>
+        <input type="text" id="full_name" name="full_name" required>
+      </div>
+
+      <div class="form-group">
+        <label for="dni">DNI / ID number</label>
+        <input type="text" id="dni" name="dni" required>
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Teléfono / Phone</label>
+        <input type="text" id="phone" name="phone">
+      </div>
+
+      <div class="form-group">
+        <label for="email">Correo electrónico / Email</label>
+        <input type="email" id="email" name="email">
+      </div>
+
+      <div class="form-group">
+        <label for="coverage">Cobertura / Coverage</label>
+        <select id="coverage" name="coverage" required>
+          <option value="">Seleccione una opción / Select an option</option>
+          {% for c in coverages %}
+            <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="service">Servicio / Service</label>
+        <select id="service" name="service" required>
+          <option value="">Seleccione una opción / Select an option</option>
+          {% for s in services %}
+            <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="doctor">Médico tratante / Treating doctor</label>
+        <select id="doctor" name="doctor" required>
+          <option value="">Seleccione una opción / Select an option</option>
+          {% for d in doctors %}
+            <option value="{{ d }}">{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="planned_date">Fecha probable de intervención / Planned date</label>
+        <input type="date" id="planned_date" name="planned_date" required>
+      </div>
+
+      <div class="form-group form-group-full">
+        <label>Observaciones para autorizaciones / External observations</label>
+        <textarea id="external_observations" name="external_observations" rows="3"></textarea>
+      </div>
+
+    </div>
+
+    <hr class="divider">
+
+    <h3 class="files-title">Documentación obligatoria / Required documents</h3>
+
+    <div class="file-grid">
+      
+      <div class="file-upload-group">
+        <span class="file-upload-label">DNI (frente y dorso) / National ID</span>
+        <label class="custom-file-label">Subir archivo
+          <input type="file" name="dni_file" class="custom-file-input" accept=".pdf,image/*" required>
+        </label>
+        <span class="file-chosen"></span>
+        <span class="file-status"></span>
+      </div>
+
+      <div class="file-upload-group">
+        <span class="file-upload-label">Credencial de cobertura / Insurance card</span>
+        <label class="custom-file-label">Subir archivo
+          <input type="file" name="credencial_file" class="custom-file-input" accept=".pdf,image/*" required>
+        </label>
+        <span class="file-chosen"></span>
+        <span class="file-status"></span>
+      </div>
+
+      <div class="file-upload-group">
+        <span class="file-upload-label">Orden de intervención / Surgery order</span>
+        <label class="custom-file-label">Subir archivo
+          <input type="file" name="orden_intervencion_file" class="custom-file-input" accept=".pdf,image/*" required>
+        </label>
+        <span class="file-chosen"></span>
+        <span class="file-status"></span>
+      </div>
+
+    </div>
+
+    <h3 class="files-title">Documentación opcional / Optional documents</h3>
+
+    <div class="file-grid">
+
+      <div class="file-upload-group">
+        <span class="file-upload-label">Orden de materiales (si corresponde)</span>
+        <label class="custom-file-label">Subir archivo
+          <input type="file" name="orden_material_file" class="custom-file-input" accept=".pdf,image/*">
+        </label>
+        <span class="file-chosen"></span>
+        <span class="file-status"></span>
+      </div>
+
+      <div class="file-upload-group">
+        <span class="file-upload-label">Resumen de HC y/o estudios previos</span>
+        <label class="custom-file-label">Subir archivo
+          <input type="file" name="hc_file" class="custom-file-input" accept=".pdf,image/*">
+        </label>
+        <span class="file-chosen"></span>
+        <span class="file-status"></span>
+      </div>
+
+      <div class="file-upload-group">
+        <span class="file-upload-label">Autorización (si corresponde)</span>
+        <label class="custom-file-label">Subir archivo
+          <input type="file" name="autorizacion_file" class="custom-file-input" accept=".pdf,image/*">
+        </label>
+        <span class="file-chosen"></span>
+        <span class="file-status"></span>
+      </div>
+
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Enviar solicitud / Submit request</button>
+    </div>
+
+  </form>
+</section>
+
+<!-- SPINNER -->
+<div id="sending-overlay" style="
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,0.45);display:none;
+    align-items:center;justify-content:center;
+    z-index:9999;color:white;font-size:22px;">
+    <div>
+        <div class="spinner-border text-light" style="width:3rem;height:3rem;"></div>
+        <p class="mt-3">Enviando solicitud...</p>
+    </div>
+</div>
+
+<script>
+/* Mostrar archivo seleccionado */
+document.querySelectorAll('.custom-file-input').forEach(input => {
+  input.addEventListener('change', function () {
+    const group = this.closest('.file-upload-group');
+    const chosen = group.querySelector('.file-chosen');
+    const status = group.querySelector('.file-status');
+
+    const fileName = this.files.length ? this.files[0].name : "";
+    chosen.textContent = fileName ? "Archivo: " + fileName : "";
+
+    if (fileName) {
+      status.innerHTML = "<span style='color:#28a745;font-weight:bold;'>✔ Archivo listo</span>";
+    } else {
+      status.textContent = "";
+    }
+  });
+});
+
+/* Spinner al enviar */
+document.getElementById("qr-form").addEventListener("submit", function() {
+  document.getElementById("sending-overlay").style.display = "flex";
+});
+</script>
+
+{% endblock %}

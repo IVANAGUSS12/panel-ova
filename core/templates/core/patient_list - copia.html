@@ -1,0 +1,135 @@
+{% extends 'core/base.html' %}
+{% block title %}Solicitudes - Panel OVA{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2>Solicitudes / Servicio</h2>
+      <p class="card-sub">
+        Listado filtrable por estado, cobertura, doctor, servicio,
+        fechas de cirugía, fechas de carga y ordenamiento asc/desc.
+      </p>
+    </div>
+    <div>
+      <a href="{% url 'core:qr_patient_create' %}" class="btn-primary">
+        + Nueva solicitud
+      </a>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <form method="get" class="filters">
+
+    <div class="form-group">
+      <label for="id_q">Buscar (nombre o DNI)</label>
+      {{ form.q }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_status">Estado</label>
+      {{ form.status }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_coverage">Cobertura</label>
+      {{ form.coverage }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_doctor">Médico</label>
+      {{ form.doctor }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_service">Servicio</label>
+      {{ form.service }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_date_from">Fecha cirugía desde</label>
+      {{ form.date_from }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_date_to">Fecha cirugía hasta</label>
+      {{ form.date_to }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_created_from">Cargado desde</label>
+      {{ form.created_from }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_created_to">Cargado hasta</label>
+      {{ form.created_to }}
+    </div>
+
+    <!-- ORDEN -->
+    <div class="form-group">
+      <label for="id_order_by">Ordenar por</label>
+      {{ form.order_by }}
+    </div>
+
+    <button type="submit" class="btn-primary">Aplicar filtros</button>
+    <a href="{% url 'core:patient_list' %}" class="btn-ghost">Limpiar filtros</a>
+
+  </form>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Cobertura</th>
+        <th>Médico</th>
+        <th>Servicio</th>
+        <th>Fecha cirugía</th>
+        <th>Estado</th>
+        <th></th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for p in patients %}
+        <tr>
+          <td>{{ p.tracking_id }}</td>
+          <td>{{ p.full_name }}</td>
+          <td>{{ p.coverage }}</td>
+          <td>{{ p.doctor }}</td>
+          <td>{{ p.service }}</td>
+          <td>{{ p.planned_date|date:"d/m/Y" }}</td>
+
+          <td>
+            {% if p.status == 'AUTORIZADO' %}
+              <span class="badge badge-autorizado">{{ p.get_status_display }}</span>
+            {% elif p.status == 'PENDIENTE' %}
+              <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+            {% elif p.status == 'SOLICITADO' %}
+              <span class="badge badge-solicitado">{{ p.get_status_display }}</span>
+            {% elif p.status == 'MATERIAL_PENDIENTE' %}
+              <span class="badge badge-material">{{ p.get_status_display }}</span>
+            {% elif p.status == 'RECHAZO' %}
+              <span class="badge badge-rechazado">{{ p.get_status_display }}</span>
+            {% elif p.status == 'REPROGRAMADO' %}
+              <span class="badge badge-reprogramado">{{ p.get_status_display }}</span>
+            {% else %}
+              <span class="badge">{{ p.get_status_display }}</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <a href="{% url 'core:patient_detail' p.pk %}" class="btn-ghost btn-small">Ver</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="8">No hay pacientes con los filtros actuales.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</section>
+{% endblock %}

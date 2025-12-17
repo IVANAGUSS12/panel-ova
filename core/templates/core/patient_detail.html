@@ -1,0 +1,146 @@
+{% extends 'core/base.html' %}
+{% block title %}Detalle paciente - Panel OVA{% endblock %}
+
+{% block content %}
+<section class="card card-detail">
+
+  <div class="detail-header">
+    <div class="detail-header-top">
+      <a href="{% url 'core:patient_list' %}" class="btn-secondary btn-small">
+        ← Volver al listado
+      </a>
+    </div>
+
+    <h2 class="detail-title">
+      {{ patient.full_name }}
+      <span class="detail-id">· {{ patient.tracking_id }}</span>
+    </h2>
+    <p class="detail-meta">
+      DNI: {{ patient.dni }} · Cobertura: {{ patient.coverage }}
+    </p>
+  </div>
+
+  <div class="detail-grid">
+    <!-- Columna izquierda: datos + estado -->
+    <div class="detail-column">
+      <h3 class="section-title">Datos del paciente</h3>
+      <p><strong>Médico:</strong> {{ patient.doctor }}</p>
+      <p><strong>Servicio:</strong> {{ patient.service }}</p>
+      <p><strong>Fecha probable intervención:</strong> {{ patient.planned_date|date:"d/m/Y" }}</p>
+      <p><strong>Email:</strong> {{ patient.email|default:"-" }}</p>
+      <p><strong>Celular / WhatsApp:</strong> {{ patient.phone|default:"-" }}</p>
+      <p><strong>Observaciones externas:</strong> {{ patient.external_observations|default:"-" }}</p>
+
+      <h3 class="section-title">Estado y observaciones internas</h3>
+      <p class="detail-current-status">
+        <span>Estado actual:</span>
+        {% if patient.status == 'AUTORIZADO' %}
+          <span class="badge badge-autorizado">{{ patient.get_status_display }}</span>
+        {% elif patient.status == 'PENDIENTE' %}
+          <span class="badge badge-pendiente">{{ patient.get_status_display }}</span>
+        {% elif patient.status == 'SOLICITADO' %}
+          <span class="badge badge-solicitado">{{ patient.get_status_display }}</span>
+        {% elif patient.status == 'MATERIAL_PENDIENTE' %}
+          <span class="badge badge-material">{{ patient.get_status_display }}</span>
+        {% elif patient.status == 'RECHAZO' %}
+          <span class="badge badge-rechazado">{{ patient.get_status_display }}</span>
+        {% elif patient.status == 'REPROGRAMADO' %}
+          <span class="badge badge-reprogramado">{{ patient.get_status_display }}</span>
+        {% else %}
+          <span class="badge">{{ patient.get_status_display }}</span>
+        {% endif %}
+      </p>
+
+      <form method="post" class="detail-form">
+        {% csrf_token %}
+        <input type="hidden" name="update_status" value="1">
+
+        <div class="form-group">
+          <label for="status">Estado</label>
+          <select name="status" id="status">
+            {% for value,label in patient.STATUS_CHOICES %}
+              <option value="{{ value }}" {% if value == patient.status %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="internal_observations">Observaciones internas</label>
+          <textarea name="internal_observations" id="internal_observations" rows="4">
+{{ patient.internal_observations|default:"" }}</textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">
+            Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Columna derecha: adjuntos + reprogramación -->
+    <div class="detail-column">
+      <h3 class="section-title">Adjuntos</h3>
+      <ul class="attachments-list">
+        {% for a in patient.attachments.all %}
+          <li>
+            <div class="attachment-main">
+              <span class="attachment-label">{{ a.get_type_display }}</span>
+              <span class="attachment-meta">
+                {{ a.uploaded_at|date:"d/m/Y H:i" }}
+              </span>
+            </div>
+            <div class="attachment-actions">
+              <a href="{{ a.file.url }}" target="_blank" class="btn-secondary btn-small">
+                👁 Ver
+              </a>
+              <a href="{{ a.file.url }}" download class="btn-primary btn-small">
+                ⭳ Descargar
+              </a>
+            </div>
+          </li>
+        {% empty %}
+          <li>Sin archivos adjuntos.</li>
+        {% endfor %}
+      </ul>
+
+      <form method="post" enctype="multipart/form-data" class="detail-form">
+        {% csrf_token %}
+        <input type="hidden" name="add_attachment" value="1">
+
+        <div class="form-group">
+          {{ attachment_form.type.label_tag }}
+          {{ attachment_form.type }}
+        </div>
+        <div class="form-group">
+          {{ attachment_form.file.label_tag }}
+          {{ attachment_form.file }}
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-secondary">
+            Agregar archivo
+          </button>
+        </div>
+      </form>
+
+      <h3 class="section-title">Reprogramación</h3>
+      <p><strong>Última reprogramación:</strong> {{ patient.last_reprogram_date|default:"-" }}</p>
+      <p><strong>Motivo:</strong> {{ patient.last_reprogram_reason|default:"-" }}</p>
+
+      <form method="post" class="detail-form">
+        {% csrf_token %}
+        <input type="hidden" name="reprogram" value="1">
+        {{ reprogram_form.as_p }}
+        <div class="form-actions">
+          <button type="submit" class="btn-secondary">
+            Reprogramar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

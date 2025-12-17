@@ -1,0 +1,65 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Panel OVA{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- CSS propio -->
+    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}">
+
+    <!-- FullCalendar (CSS) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
+
+    <!-- Fuente -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    >
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-left">
+          <span class="logo-chip">OVA</span>
+          <div class="logo-text">
+            <span class="logo-title">Panel OVA</span>
+            <span class="logo-subtitle">Gestión quirófano</span>
+          </div>
+        </div>
+
+        <nav class="topbar-nav">
+          {% if user.is_authenticated %}
+            <a href="/">Dashboard</a>
+            <a href="/servicio/">Servicio</a>
+            <a href="/calendario/">Calendario</a>
+            <a href="/estadisticas/">Estadísticas</a>
+          {% endif %}
+        </nav>
+
+        <div class="topbar-right">
+          {% if user.is_authenticated %}
+            <span class="user-label">{{ user.username }}</span>
+            <span class="topbar-divider">·</span>
+            <a href="/accounts/logout/">Salir</a>
+          {% else %}
+            <a href="/accounts/login/">Login</a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="main-container">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <!-- JS de terceros -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  </body>
+</html>

@@ -1,0 +1,134 @@
+{% extends 'core/base.html' %}
+{% block title %}Dashboard - Panel OVA{% endblock %}
+
+{% block content %}
+
+<section class="card">
+  <div class="card-header">
+    <h2>Resumen general</h2>
+    <p class="card-sub">
+      Visión rápida del volumen de solicitudes cargadas en el sistema.
+    </p>
+  </div>
+
+  <p class="big-number">{{ total }}</p>
+  <p>Total de solicitudes cargadas históricamente.</p>
+
+  <ul>
+    <li>En el mes actual: <strong>{{ total_mes }}</strong></li>
+    <li>Últimos 7 días: <strong>{{ total_semana }}</strong></li>
+  </ul>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2>Estado de solicitudes</h2>
+    <p class="card-sub">
+      Cómo se distribuyen las solicitudes según su estado actual.
+    </p>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Estado</th>
+        <th>Cantidad</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in status_summary %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>{{ row.count }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2>Agenda de cirugías</h2>
+    <p class="card-sub">
+      Lo que está programado para hoy y los próximos 7 días.
+    </p>
+  </div>
+
+  <h3>Hoy ({{ hoy|date:"d/m/Y" }})</h3>
+  <ul>
+    {% for p in proximas_hoy %}
+      <li>
+        <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
+        – {{ p.full_name }} ({{ p.service }}) – {{ p.coverage }}
+      </li>
+    {% empty %}
+      <li>No hay cirugías para hoy.</li>
+    {% endfor %}
+  </ul>
+
+  <h3 style="margin-top:1rem;">Próximos 7 días</h3>
+  <ul>
+    {% for p in proximas_semana %}
+      <li>
+        <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
+        – {{ p.full_name }} ({{ p.service }}) – {{ p.coverage }}
+      </li>
+    {% empty %}
+      <li>No hay cirugías en los próximos 7 días.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2>Servicios y coberturas más frecuentes</h2>
+    <p class="card-sub">
+      Top 5 según la cantidad total de solicitudes.
+    </p>
+  </div>
+
+  <div class="form-grid">
+    <div>
+      <h3>Servicios</h3>
+      <ul>
+        {% for s in top_servicios %}
+          <li>{{ s.service }}: <strong>{{ s.c }}</strong></li>
+        {% empty %}
+          <li>Sin datos.</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h3>Coberturas</h3>
+      <ul>
+        {% for c in top_coberturas %}
+          <li>{{ c.coverage }}: <strong>{{ c.c }}</strong></li>
+        {% empty %}
+          <li>Sin datos.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2>Últimas solicitudes cargadas</h2>
+    <p class="card-sub">
+      Las últimas 5 solicitudes ingresadas al sistema.
+    </p>
+  </div>
+
+  <ul>
+    {% for p in ultimas %}
+      <li>
+        <strong>{{ p.created_at|date:"d/m/Y H:i" }}</strong>
+        – {{ p.full_name }} ({{ p.service }}) – {{ p.coverage }} – {{ p.get_status_display }}
+      </li>
+    {% empty %}
+      <li>Todavía no hay solicitudes cargadas.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+{% endblock %}

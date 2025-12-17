@@ -1,0 +1,888 @@
+/* ================================
+   PANEL OVA - ESTILO WINDOWS 11
+   ================================ */
+
+/* Reset básico */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Fondo general: claro, suave, no blanco puro */
+body {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: radial-gradient(
+      circle at top left,
+      #e0ecff 0,
+      #eef2f7 45%,
+      #e9eff8 100%
+    );
+  color: #111827;
+}
+
+/* Links genéricos */
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ================================
+   TOPBAR
+   ================================ */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+}
+
+.topbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.4rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* Logo / título */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.logo-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.55);
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.logo-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #111827;
+}
+
+.logo-subtitle {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* Navegación */
+.topbar-nav {
+  display: flex;
+  gap: 1.25rem;
+  justify-content: center;
+  flex: 1.4;
+  min-width: 0;
+}
+
+.topbar-nav a {
+  position: relative;
+  font-size: 0.9rem;
+  color: #4b5563;
+  text-decoration: none;
+  padding-bottom: 0.2rem;
+  white-space: nowrap;
+}
+
+.topbar-nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #22c55e);
+  transition: width 0.2s ease-out;
+}
+
+.topbar-nav a:hover {
+  color: #111827;
+}
+
+.topbar-nav a:hover::after {
+  width: 100%;
+}
+
+/* Usuario */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.user-label {
+  color: #4b5563;
+}
+
+.topbar-divider {
+  color: #9ca3af;
+}
+
+/* ================================
+   LAYOUT PRINCIPAL
+   ================================ */
+
+.main {
+  padding: 1.4rem 0 2.5rem;
+}
+
+.main-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* ================================
+   CARDS
+   ================================ */
+
+.card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 1.4rem 1.7rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
+  margin-bottom: 1.4rem;
+}
+
+.card-header {
+  margin-bottom: 0.85rem;
+}
+
+.card-header h2 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.card-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+/* Número grande en dashboard */
+.big-number {
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+/* ================================
+   BOTONES
+   ================================ */
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  border-radius: 999px;
+  padding: 0.5rem 1.2rem;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-secondary {
+  background: #edf2ff;
+  border: 1px solid #c7d2fe;
+  color: #1d4ed8;
+}
+
+.btn-secondary:hover {
+  background: #e0e7ff;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #4b5563;
+}
+
+.btn-ghost:hover {
+  background: #e5e7eb;
+}
+
+/* ================================
+   FORMULARIOS
+   ================================ */
+
+.form-qr {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Layout general de formularios:
+   auto-fit para que en desktop haya varias columnas
+   pero sin forzar cantidad fija */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem 1.25rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.form-group label {
+  color: #374151;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="date"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  font-size: 0.9rem;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+  background-color: #ffffff;
+}
+
+/* Mensajes */
+.alert-success {
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+  font-size: 0.85rem;
+  color: #14532d;
+  margin-bottom: 0.75rem;
+}
+
+/* Acciones formulario */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+/* ================================
+   FILTROS (LISTA SERVICIO)
+   ================================ */
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.1rem;
+  align-items: flex-end;
+}
+
+/* ================================
+   TABLAS
+   ================================ */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table thead {
+  background: #f3f4f6;
+}
+
+.table th,
+.table td {
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+}
+
+.table th {
+  font-weight: 500;
+  color: #4b5563;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.table tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.table tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+.table tbody tr:hover {
+  background: #e5f0ff;
+}
+
+.table td {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Badges genéricos */
+.badge {
+  display: inline-flex;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.badge-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-warning {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.badge-danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* ================================
+   UPLOAD DE ARCHIVOS
+   ================================ */
+
+.file-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem 1.25rem;
+}
+
+.file-upload-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.file-upload-label {
+  color: #374151;
+}
+
+.custom-file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px dashed #cbd5f5;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #374151;
+}
+
+.custom-file-label:hover {
+  border-style: solid;
+  background: #eef2ff;
+}
+
+.custom-file-input {
+  display: none;
+}
+
+.file-chosen {
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+/* ================================
+   LOGIN
+   ================================ */
+
+.login-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(
+      circle at top,
+      #dde7ff 0,
+      #eef2f7 45%,
+      #e4ebf7 100%
+    );
+  margin: 0;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 420px;
+  padding: 1.5rem;
+}
+
+.login-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 1.7rem 1.6rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  text-align: center;
+}
+
+.login-card h1 {
+  margin: 0 0 0.15rem 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+}
+
+.login-card h2 {
+  margin: 0 0 1.1rem 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+/* ================================
+   CALENDARIO / STATS (BÁSICO)
+   ================================ */
+
+.calendar-card {
+  max-width: 1100px;
+  margin: 0 auto 1.4rem auto;
+}
+
+#calendar {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+}
+
+.stats-chart {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* ================================
+   RESPONSIVE
+   ================================ */
+
+@media (max-width: 900px) {
+  .topbar-inner {
+    padding: 0.4rem 1rem;
+  }
+
+  .main-container {
+    padding: 0 1rem;
+  }
+
+  .card {
+    padding: 1.25rem 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-nav {
+    display: none;
+  }
+
+  .topbar-inner {
+    padding: 0.5rem 0.9rem;
+  }
+
+  .main-container {
+    padding: 0 0.9rem;
+  }
+}
+
+/* ================================
+   BADGES POR ESTADO
+   ================================ */
+
+.badge-pendiente {
+  background: #fff4e6;
+  color: #b45309;
+  border: 1px solid #fcd9b6;
+}
+
+.badge-solicitado {
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #bae6fd;
+}
+
+.badge-autorizado {
+  background: #e8f7ef;
+  color: #15803d;
+  border: 1px solid #b7e4c7;
+}
+
+.badge-material {
+  background: #eaeaff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.badge-rechazado {
+  background: #fdecea;
+  color: #b91c1c;
+  border: 1px solid #f5c2c7;
+}
+
+.badge-reprogramado {
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+
+/* Botones pequeños (Ver / Descargar / Volver) */
+
+.btn-small {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+/* ================================
+   DETALLE PACIENTE
+   ================================ */
+
+.detail-header {
+  margin-bottom: 0.9rem;
+}
+
+.detail-title {
+  margin: 0.5rem 0 0.1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.detail-id {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.detail-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1.4fr);
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.detail-column {
+  min-width: 0;
+}
+
+.section-title {
+  margin: 1.1rem 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.detail-form {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+/* Adjuntos */
+
+.attachments-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 0.9rem;
+}
+
+.attachments-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.attachment-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.attachment-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.attachment-meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Responsive detalle */
+
+@media (max-width: 900px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detail-header-top {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.detail-current-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.detail-form .form-actions {
+  margin-top: 0.3rem;
+}
+
+/* ================================
+   BOTÓN FLOTANTE WHATSAPP (VERSIÓN TEXTUAL)
+   ================================ */
+
+.whatsapp-float {
+  position: fixed;
+  right: 1.2rem;
+  bottom: 1.2rem;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: #22c55e;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: 0 12px 30px rgba(34, 197, 94, 0.5);
+}
+
+.whatsapp-float:hover {
+  filter: brightness(1.05);
+}
+
+.whatsapp-icon {
+  font-size: 1rem;
+}
+
+.whatsapp-text {
+  white-space: nowrap;
+}
+
+/* ================================
+   BOTÓN FLOTANTE WHATSAPP (ICONO REDONDO)
+   ================================ */
+
+.whatsapp-btn {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  width: 58px;
+  height: 58px;
+  background: #25d366;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.25);
+  z-index: 999;
+}
+
+.whatsapp-btn img {
+  width: 32px;
+  height: 32px;
+}
+
+/* ================================
+   AJUSTES ESPECÍFICOS QR
+   ================================ */
+
+.card-qr {
+  padding: 2rem 2.2rem !important;
+}
+
+/* 👉 Acá forzamos SOLO el formulario del QR a 2 columnas */
+.card-qr .form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem;
+}
+
+/* Observaciones ocupa todo el ancho (2 columnas) */
+.card-qr .form-group-full {
+  grid-column: span 2;
+}
+
+/* Documentación: una columna por fila, estilo Netlify */
+.card-qr .file-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.4rem;
+}
+
+/* En móvil, el QR pasa a una columna */
+@media (max-width: 768px) {
+  .card-qr .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .card-qr .form-group-full {
+    grid-column: span 1;
+  }
+}
+/* ================================
+   FULLCALENDAR - ESTILO GOOGLE
+   ================================ */
+
+.fc {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 0.85rem;
+}
+
+.fc .fc-toolbar.fc-header-toolbar {
+  padding: 0.5rem 0.4rem 0.75rem;
+}
+
+.fc-toolbar-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.fc-button-primary {
+  background: #111827;
+  border: none;
+  border-radius: 999px;
+  padding: 0.25rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.fc-button-primary:not(:disabled):hover {
+  background: #030712;
+}
+
+.fc-daygrid-day-number {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.fc-daygrid-day.fc-day-today {
+  background: #eff6ff;
+}
+
+.fc-col-header-cell {
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.fc-daygrid-event {
+  border-radius: 999px;
+  padding: 0 6px;
+  border: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Sombra suave al pasar el mouse por un evento */
+.fc-daygrid-event:hover {
+  filter: brightness(1.05);
+}
+

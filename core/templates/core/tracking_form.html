@@ -1,0 +1,39 @@
+{% extends 'core/base.html' %}
+{% block title %}Seguimiento de solicitud{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header">
+        <h2>Seguimiento de solicitud</h2>
+        <p class="card-sub">Ingrese su código OVA para ver el estado.</p>
+    </div>
+
+    <form method="get" class="form-group" style="max-width:400px;">
+        <label>Código de seguimiento</label>
+        <input type="text" name="id" class="form-control" placeholder="Ej: OVA1764161228" value="{{ tracking_id }}">
+        <button type="submit" class="btn-primary mt-2">Consultar</button>
+    </form>
+
+    {% if tracking_id and not patient %}
+        <div class="alert-danger mt-3">
+            <strong>No se encontró ninguna solicitud con ese código.</strong>
+        </div>
+    {% endif %}
+
+    {% if patient %}
+    <div class="card mt-4">
+        <div class="card-header">
+            <h3>Estado de la solicitud</h3>
+        </div>
+        <table class="table">
+            <tr><th>Nombre</th><td>{{ patient.full_name }}</td></tr>
+            <tr><th>Cobertura</th><td>{{ patient.coverage }}</td></tr>
+            <tr><th>Médico</th><td>{{ patient.doctor }}</td></tr>
+            <tr><th>Servicio</th><td>{{ patient.service }}</td></tr>
+            <tr><th>Fecha probable</th><td>{{ patient.planned_date|date:"d/m/Y" }}</td></tr>
+            <tr><th>Estado</th><td>{{ patient.get_status_display }}</td></tr>
+        </table>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
