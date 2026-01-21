@@ -6,7 +6,7 @@
 
   <div class="detail-header">
     <div class="detail-header-top">
-      <a href="{% url 'core:patient_list' %}" class="btn-secondary btn-small">
+      <a href="{{ back_url }}" class="btn-secondary btn-small">
         ← Volver al listado
       </a>
     </div>
@@ -21,7 +21,6 @@
   </div>
 
   <div class="detail-grid">
-    <!-- Columna izquierda: datos + estado -->
     <div class="detail-column">
       <h3 class="section-title">Datos del paciente</h3>
       <p><strong>Médico:</strong> {{ patient.doctor }}</p>
@@ -54,10 +53,11 @@
       <form method="post" class="detail-form">
         {% csrf_token %}
         <input type="hidden" name="update_status" value="1">
+        <input type="hidden" name="next" value="{{ back_url }}">
 
         <div class="form-group">
-          <label for="status">Estado</label>
-          <select name="status" id="status">
+          <label for="id_status">Estado</label>
+          <select name="status" id="id_status" class="form-control">
             {% for value,label in patient.STATUS_CHOICES %}
               <option value="{{ value }}" {% if value == patient.status %}selected{% endif %}>
                 {{ label }}
@@ -67,20 +67,22 @@
         </div>
 
         <div class="form-group">
-          <label for="internal_observations">Observaciones internas</label>
-          <textarea name="internal_observations" id="internal_observations" rows="4">
-{{ patient.internal_observations|default:"" }}</textarea>
+          <label for="id_internal_observations">Observaciones internas</label>
+          <textarea
+            name="internal_observations"
+            id="id_internal_observations"
+            rows="4"
+            class="form-control"
+            placeholder="Escribí observaciones internas..."
+          >{{ patient.internal_observations|default_if_none:"" }}</textarea>
         </div>
 
         <div class="form-actions">
-          <button type="submit" class="btn-primary">
-            Guardar
-          </button>
+          <button type="submit" class="btn-primary">Guardar</button>
         </div>
       </form>
     </div>
 
-    <!-- Columna derecha: adjuntos + reprogramación -->
     <div class="detail-column">
       <h3 class="section-title">Adjuntos</h3>
       <ul class="attachments-list">
@@ -88,17 +90,11 @@
           <li>
             <div class="attachment-main">
               <span class="attachment-label">{{ a.get_type_display }}</span>
-              <span class="attachment-meta">
-                {{ a.uploaded_at|date:"d/m/Y H:i" }}
-              </span>
+              <span class="attachment-meta">{{ a.uploaded_at|date:"d/m/Y H:i" }}</span>
             </div>
             <div class="attachment-actions">
-              <a href="{{ a.file.url }}" target="_blank" class="btn-secondary btn-small">
-                👁 Ver
-              </a>
-              <a href="{{ a.file.url }}" download class="btn-primary btn-small">
-                ⭳ Descargar
-              </a>
+              <a href="{{ a.file.url }}" target="_blank" class="btn-secondary btn-small">👁 Ver</a>
+              <a href="{{ a.file.url }}" download class="btn-primary btn-small">⭳ Descargar</a>
             </div>
           </li>
         {% empty %}
@@ -109,6 +105,7 @@
       <form method="post" enctype="multipart/form-data" class="detail-form">
         {% csrf_token %}
         <input type="hidden" name="add_attachment" value="1">
+        <input type="hidden" name="next" value="{{ back_url }}">
 
         <div class="form-group">
           {{ attachment_form.type.label_tag }}
@@ -120,9 +117,7 @@
         </div>
 
         <div class="form-actions">
-          <button type="submit" class="btn-secondary">
-            Agregar archivo
-          </button>
+          <button type="submit" class="btn-secondary">Agregar archivo</button>
         </div>
       </form>
 
@@ -133,11 +128,12 @@
       <form method="post" class="detail-form">
         {% csrf_token %}
         <input type="hidden" name="reprogram" value="1">
+        <input type="hidden" name="next" value="{{ back_url }}">
+
         {{ reprogram_form.as_p }}
+
         <div class="form-actions">
-          <button type="submit" class="btn-secondary">
-            Reprogramar
-          </button>
+          <button type="submit" class="btn-secondary">Reprogramar</button>
         </div>
       </form>
     </div>

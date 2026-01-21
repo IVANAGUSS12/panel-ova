@@ -9,26 +9,106 @@
     <div>
       <h2>Estadísticas</h2>
       <p class="card-sub">
-        Volumen de solicitudes por servicio y cobertura.
+        Reporte entre fechas (por carga) con comparativa por períodos de 7 días y detalle por especialidad (servicio).
       </p>
     </div>
-    <div>
+    <div class="header-actions">
       <a href="{% url 'core:export_excel' %}" class="btn-secondary">Exportar Excel</a>
       <a href="{% url 'core:export_pdf' %}" class="btn-secondary">Exportar PDF</a>
     </div>
   </div>
 
+  <!-- FILTROS FECHA -->
+  <form class="filters" onsubmit="return false;">
+    <div class="form-group">
+      <label for="stats_from">Desde</label>
+      <input id="stats_from" type="text" class="form-control" placeholder="dd/mm/aaaa">
+    </div>
+    <div class="form-group">
+      <label for="stats_to">Hasta</label>
+      <input id="stats_to" type="text" class="form-control" placeholder="dd/mm/aaaa">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button id="stats_apply" class="btn-primary" type="button">Aplicar</button>
+      <a id="stats_clear" href="{% url 'core:stats_view' %}" class="btn-ghost">Limpiar</a>
+    </div>
+  </form>
+
+  <!-- RESUMEN -->
+  <div class="stats-kpis">
+    <div class="kpi">
+      <div class="kpi-label">Período</div>
+      <div class="kpi-value" id="kpiPeriod">-</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total solicitudes</div>
+      <div class="kpi-value" id="kpiTotal">-</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Autorizadas</div>
+      <div class="kpi-value" id="kpiAutorizadas">-</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Pendientes</div>
+      <div class="kpi-value" id="kpiPendientes">-</div>
+    </div>
+  </div>
+
+  <!-- GRAFICAS -->
   <div class="stats-grid">
     <div class="stats-chart">
-      <h3>Por servicio</h3>
+      <h3>Estados (total)</h3>
+      <canvas id="chartStatus"></canvas>
+    </div>
+
+    <div class="stats-chart">
+      <h3>Comparativa por períodos de 7 días (si el rango > 7 días)</h3>
+      <canvas id="chartPeriods"></canvas>
+    </div>
+
+    <div class="stats-chart">
+      <h3>Por especialidad (servicio)</h3>
       <canvas id="chartService"></canvas>
     </div>
+
     <div class="stats-chart">
       <h3>Por cobertura</h3>
       <canvas id="chartCoverage"></canvas>
     </div>
   </div>
+
+  <div class="stats-grid">
+    <div class="stats-chart" style="grid-column: 1 / -1;">
+      <div class="stats-chart-header">
+        <h3>Estados por especialidad (servicio)</h3>
+        <div class="form-group" style="min-width: 320px;">
+          <label for="service_detail" style="display:none;">Servicio</label>
+          <select id="service_detail" class="form-control">
+            <option value="">Seleccioná un servicio...</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stats-split">
+        <div class="stats-split-item">
+          <canvas id="chartServiceStacked"></canvas>
+        </div>
+        <div class="stats-split-item">
+          <h4 style="margin: 0 0 10px 0;">Detalle del servicio</h4>
+          <canvas id="chartServiceDetail"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
+
+<!-- Flatpickr (calendarios modernos) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script src="{% static 'core/js/stats.js' %}"></script>
 {% endblock %}

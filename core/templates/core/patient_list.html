@@ -18,6 +18,19 @@
     </div>
   </div>
 
+  <!-- FLATPICKR (calendarios lindos) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const ids = ["#id_date_from", "#id_date_to", "#id_created_from", "#id_created_to"];
+      ids.forEach(function(sel){
+        const el = document.querySelector(sel);
+        if (el) flatpickr(el, { dateFormat: "Y-m-d", allowInput: true });
+      });
+    });
+  </script>
+
   <!-- FILTROS -->
   <form method="get" class="filters">
 
@@ -26,24 +39,74 @@
       {{ form.q }}
     </div>
 
+    <!-- ESTADO (mejorado) -->
     <div class="form-group">
       <label for="id_status">Estado</label>
-      {{ form.status }}
+      <select name="status" id="id_status" class="form-control">
+        {% for value,label in form.status.field.choices %}
+          <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
     </div>
 
+    <!-- COBERTURA con opciones -->
     <div class="form-group">
       <label for="id_coverage">Cobertura</label>
-      {{ form.coverage }}
+      <input
+        type="text"
+        name="coverage"
+        id="id_coverage"
+        list="coverage_options_list"
+        value="{{ request.GET.coverage|default:'' }}"
+        class="form-control"
+        placeholder="Ej: OSDE, OMINT, SWISS MEDICAL..."
+        autocomplete="off"
+      />
+      <datalist id="coverage_options_list">
+        {% for c in coverage_options %}
+          <option value="{{ c }}"></option>
+        {% endfor %}
+      </datalist>
     </div>
 
+    <!-- MEDICO con opciones -->
     <div class="form-group">
       <label for="id_doctor">Médico</label>
-      {{ form.doctor }}
+      <input
+        type="text"
+        name="doctor"
+        id="id_doctor"
+        list="doctor_options_list"
+        value="{{ request.GET.doctor|default:'' }}"
+        class="form-control"
+        placeholder="Ej: Apellido Nombre..."
+        autocomplete="off"
+      />
+      <datalist id="doctor_options_list">
+        {% for d in doctor_options %}
+          <option value="{{ d }}"></option>
+        {% endfor %}
+      </datalist>
     </div>
 
+    <!-- SERVICIO con opciones -->
     <div class="form-group">
       <label for="id_service">Servicio</label>
-      {{ form.service }}
+      <input
+        type="text"
+        name="service"
+        id="id_service"
+        list="service_options_list"
+        value="{{ request.GET.service|default:'' }}"
+        class="form-control"
+        placeholder="Ej: Traumatología, Urología, Hemodinamia..."
+        autocomplete="off"
+      />
+      <datalist id="service_options_list">
+        {% for s in service_options %}
+          <option value="{{ s }}"></option>
+        {% endfor %}
+      </datalist>
     </div>
 
     <div class="form-group">
@@ -66,14 +129,18 @@
       {{ form.created_to }}
     </div>
 
-    <!-- ORDEN -->
+    <!-- ORDEN (mejorado) -->
     <div class="form-group">
       <label for="id_order_by">Ordenar por</label>
-      {{ form.order_by }}
+      <select name="order_by" id="id_order_by" class="form-control">
+        {% for value,label in form.order_by.field.choices %}
+          <option value="{{ value }}" {% if request.GET.order_by == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
     </div>
 
     <button type="submit" class="btn-primary">Aplicar filtros</button>
-    <a href="{% url 'core:patient_list' %}" class="btn-ghost">Limpiar filtros</a>
+    <a href="{% url 'core:patient_list' %}?clear=1" class="btn-ghost">Limpiar filtros</a>
 
   </form>
 
@@ -120,7 +187,12 @@
           </td>
 
           <td>
-            <a href="{% url 'core:patient_detail' p.pk %}" class="btn-ghost btn-small">Ver</a>
+            <a
+              href="{% url 'core:patient_detail' p.pk %}?next={{ request.get_full_path|urlencode }}"
+              class="btn-ghost btn-small"
+            >
+              Ver
+            </a>
           </td>
         </tr>
       {% empty %}

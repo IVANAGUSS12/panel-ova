@@ -1,6 +1,13 @@
 from datetime import datetime, timedelta
 from io import BytesIO
 
+import unicodedata
+from urllib.parse import urlencode
+
+from django.db.models import F, Value
+from django.db.models.functions import Lower, Replace
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 import openpyxl
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -23,32 +30,132 @@ from .models import Patient, Attachment
 # LISTAS (servicios, médicos, coberturas)
 # -------------------------------------------------------------
 
+# -------------------------------------------------------------
+# HELPERS (persistencia filtros / búsqueda tolerante)
+# -------------------------------------------------------------
+def _normalize_text(value: str) -> str:
+    """Normaliza texto: sin acentos + case-insensitive (para búsquedas más humanas)."""
+    s = (value or "").strip()
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return s.casefold()
+
+
+def _normalized_expr(field_name: str):
+    """
+    Normaliza un campo en SQL para comparar sin acentos/ñ y sin mayúsculas.
+    Funciona en SQLite/MySQL/Postgres (LOWER + REPLACE).
+    """
+    expr = Lower(F(field_name))
+    mapping = [
+        ("á", "a"), ("à", "a"), ("ä", "a"), ("â", "a"), ("ã", "a"),
+        ("é", "e"), ("è", "e"), ("ë", "e"), ("ê", "e"),
+        ("í", "i"), ("ì", "i"), ("ï", "i"), ("î", "i"),
+        ("ó", "o"), ("ò", "o"), ("ö", "o"), ("ô", "o"), ("õ", "o"),
+        ("ú", "u"), ("ù", "u"), ("ü", "u"), ("û", "u"),
+        ("ñ", "n"),
+        ("ç", "c"),
+    ]
+    for src, dst in mapping:
+        expr = Replace(expr, Value(src), Value(dst))
+    return expr
+
+
+def _build_patient_list_url(request) -> str:
+    base = reverse("core:patient_list")
+    qs = request.session.get("patient_list_qs", "")
+    return base + (f"?{qs}" if qs else "")
+
+
+def _resolve_next_url(request) -> str:
+    """Lee next de GET/POST y lo valida; si no es válido vuelve al listado con filtros guardados."""
+    candidate = (request.POST.get("next") or request.GET.get("next") or "").strip()
+    if candidate:
+        if candidate.startswith("/"):
+            return candidate
+        if url_has_allowed_host_and_scheme(
+            candidate,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return candidate
+    return _build_patient_list_url(request)
+
+
+def _build_patient_detail_url(pk: int, next_url: str | None = None) -> str:
+    url = reverse("core:patient_detail", kwargs={"pk": pk})
+    if next_url:
+        url += "?" + urlencode({"next": next_url})
+    return url
+
 SERVICIOS_QR = [
     'TRAUMATOLOGIA',
     'HEMODINAMIA',
     'UROLOGIA',
+    'CIRUGIA GENERAL',
+    'CIRUGIA CABEZA Y CUELLO',
+    'CIRUGIA TORACICA',
+    'OTORRINOLARINGOLOGIA',
 ]
 
 MEDICOS_QR = [
-    'ABALO EDUARDO', 'ADROGUE LUIS', 'BARBIERI PABLO', 'CARRIZO JUAN',
-    'CHAVEZ ARIEL', 'CONSTANZA EDUARDO', 'CORDOBA ALEJANDRA',
-    'DE ZAVALIA MAXIMO', 'DEIMUNDO MARCOS', 'DEVOTO MATIAS',
-    'GOBBI ENRIQUE', 'GRANDOLI FERNANDO', 'IGLESIAS ALEJANDRO',
-    'MALLEA ANDRES', 'MENINATO MARCOS', 'MOUNIER CARLOS',
-    'ORTIZ EZEQUIEL', 'PEREA AGUSTIN', 'PINOTTI NORBERTO',
-    'SANNA HERNAN', 'SERE IGNACIO', 'TORGA SPAK ROGER',
-    'VALENTINI ROBERTO', 'VILLA NATALIA', 'YAVEN IGNACIO',
+    # TRAUMATOLOGIA
+    'ABALO EDUARDO',
+    'ADROGUE LUIS',
+    'BARBIERI PABLO',
+    'CARRIZO JUAN',
+    'CHAVEZ ARIEL',
+    'CONSTANZA EDUARDO',
+    'CORDOBA ALEJANDRA',
+    'DE ZAVALIA MAXIMO',
+    'DEIMUNDO MARCOS',
+    'DEVOTO MATIAS',
+    'GOBBI ENRIQUE',
+    'GRANDOLI FERNANDO',
+    'IGLESIAS ALEJANDRO',
+    'MALLEA ANDRES',
+    'MENINATO MARCOS',
+    'MOUNIER CARLOS',
+    'ORTIZ EZEQUIEL',
+    'PEREA AGUSTIN',
+    'PINOTTI NORBERTO',
+    'SANNA HERNAN',
+    'SERE IGNACIO',
+    'TORGA SPAK ROGER',
+    'VALENTINI ROBERTO',
+    'VILLA NATALIA',
+    'YAVEN IGNACIO',
     'YEREGUI SANTIAGO',
 
     # HEMODINAMIA
-    'MAFFEO HORACIO', 'D ALESANDRO CIRO', 'DE CANDIDO LAURA',
-    'TAMASHIRO GUSTAVO', 'VEGA PABLO', 'MAYDANA MARTIN', 'CAROSELLA LUCILA',
-    'GARBUGINO SILVIA', 'SAYAVEDRA RAMIRO', 'BELDI FLORENCIA', 'RIVAROLA MARCELO',
-    'VILLAR DIEGO', 'TRENTACOSTE LUIS', 'LUCINI VICTORIO', 'LABADET CARLOS', 'HADID CLAUDIO',
-    'DI TORO DARIO', 'MALDONADO', 'LABADET SEBASTIAN', 'BOCHOEYER ANDRES', 'HERRERA VEGAS DIEGO',
-    'SALVADORES PABLO', 'SIMONELLI DAMIAN', 'MENGO GUSTAVO',
+    'BELDI FLORENCIA',
+    'BOCHOEYER ANDRES',
+    'CAROSELLA LUCILA',
+    'D ALESANDRO CIRO',
+    'DE CANDIDO LAURA',
+    'DI TORO DARIO',
+    'GARBUGINO SILVIA',
+    'HADID CLAUDIO',
+    'HERRERA VEGAS DIEGO',
+    'LABADET CARLOS',
+    'LABADET SEBASTIAN',
+    'LUCINI VICTORIO',
+    'MAFFEO HORACIO',
+    'MALDONADO',
+    'MAYDANA MARTIN',
+    'MENGO GUSTAVO',
+    'RIVAROLA MARCELO',
+    'SALVADORES PABLO',
+    'SAYAVEDRA RAMIRO',
+    'SIMONELLI DAMIAN',
+    'TAMASHIRO GUSTAVO',
+    'TRENTACOSTE LUIS',
+    'VEGA PABLO',
+    'VILLAR DIEGO',
 
-    # NUEVOS DOCTORES
+    # UROLOGIA
     'ANGELONI, BRUNO GABRIEL',
     'BALDESSARI, CARLOS MARTIN',
     'CAPIEL, LEANDRO',
@@ -68,8 +175,50 @@ MEDICOS_QR = [
     'RICHARDS, TOMAS',
     'RODRIGUEZ OLIVIERI, MANUELA',
     'ROVEGNO, AGUSTIN ROBERTO',
-]
 
+    # CIRUGIA GENERAL
+    'CARRIE',
+    'CLEMENTE',
+    'LANCELOTTI',
+    'PICCININI',
+    'SALGADO',
+    'SIMONELLI',
+    'SOLINAS',
+    'VERACIERTO',
+    'ZUND SANTIAGO',
+    'AVELLANEDA NICOLAS',
+
+    # CIRUGIA TORACICA
+    'NAZAR PEIRANO AGUSTIN',
+    'VIOLA AGUSTIN JAVIER',
+	
+    # CIRUGIA OTORRINO',
+    'NEMECIO ALAN',
+    'BLANC ARIANA',
+    'VALDEZ GABRIEL ANIBAL',
+    'RAMIREZ ZAIDA',
+    'GONZALEZ ARECES MARIELA ALEJANDRA',
+    'BERMUDEZ ARIEL LEONARDO',
+    'VITI MARIA MARTA',
+    'MAZZEI PAULA CECILIA',
+    'ARMIJOS KARLA',
+    'MICHALSKI DIEGO JULIAN',
+    'LOPEZ MORIS CARLOS BENJAMIN',
+    'SARTORI MARIA VERONICA',
+    'MUSACCHIO CECILIA',
+    'MARENGO RICARDO LUIS',
+    'VALERIO ANDREA',
+    'SZTAJN MARCELO',
+    'EISEMBERG GULLERMO DANIEL',
+    'FERNANDEZ LUCIA',
+    'JUCHLI MARIANA LIA',
+    'GATICA VERONICA DEL ROSARIO',
+    'NISTAL CLARA',
+    'CURI JUAN RAMON',
+    'FARAGO ESTEBAN',
+    'DOMEG MARIA BELEN',
+]
+ 
 COBERTURAS_QR = [
     'ACADEMIA NACIONAL DE MEDICINA',
     'ACMED',
@@ -86,6 +235,7 @@ COBERTURAS_QR = [
     'CEMIC',
     'CINME',
     'CIRCULO MEDICO DE LA MATANZA',
+    'CIRCULO MEDICO LOMAS DE ZAMORA',
     'COBENSIL',
     'COLEGIO ESCRIBANOS PROVINCIA',
     'ENSALUD',
@@ -232,58 +382,79 @@ def dashboard(request):
 # -------------------------------------------------------------
 @login_required
 def patient_list(request):
+    base_url = reverse("core:patient_list")
+
+    # Limpiar filtros (borra sesión y deja listado limpio)
+    if request.GET.get("clear") == "1":
+        request.session.pop("patient_list_qs", None)
+        return redirect(base_url)
+
+    # Si volvés al listado sin querystring, restaurar últimos filtros guardados
+    saved_qs = request.session.get("patient_list_qs", "")
+    if not request.GET and saved_qs:
+        return redirect(f"{base_url}?{saved_qs}")
+
+    # Guardar el estado actual de filtros (para volver desde el detalle)
+    if request.GET:
+        request.session["patient_list_qs"] = request.GET.urlencode()
+
     form = PatientFilterForm(request.GET or None)
     qs = Patient.objects.all()
 
     if form.is_valid():
 
-        # Buscar
-        q = form.cleaned_data.get('q')
+        # Buscar (SIN acentos y SIN mayus/minus)
+        q = form.cleaned_data.get("q")
         if q:
-            qs = qs.filter(
-                Q(full_name__icontains=q) |
-                Q(dni__icontains=q)
+            qn = _normalize_text(q)
+            qs = qs.annotate(
+                full_name_norm=_normalized_expr("full_name"),
+                dni_norm=_normalized_expr("dni"),
+            ).filter(
+                Q(full_name_norm__contains=qn) |
+                Q(dni_norm__contains=qn)
             )
 
         # Estado
-        status = form.cleaned_data.get('status')
+        status = form.cleaned_data.get("status")
         if status:
             qs = qs.filter(status=status)
 
-        # Cobertura
-        coverage = form.cleaned_data.get('coverage')
+        # Cobertura (tolerante)
+        coverage = form.cleaned_data.get("coverage")
         if coverage:
-            qs = qs.filter(coverage=coverage)
+            qs = qs.filter(coverage__icontains=coverage)
 
-        # Doctor
-        doctor = form.cleaned_data.get('doctor')
+        # Doctor (tolerante)
+        doctor = form.cleaned_data.get("doctor")
         if doctor:
-            qs = qs.filter(doctor=doctor)
+            qs = qs.filter(doctor__icontains=doctor)
 
-        # Servicio
-        service = form.cleaned_data.get('service')
+        # Servicio (tolerante)
+        service = form.cleaned_data.get("service")
         if service:
-            qs = qs.filter(service=service)
+            qs = qs.filter(service__icontains=service)
 
-        # Fechas
-        date_from = form.cleaned_data.get('date_from')
+        # Fechas cirugía
+        date_from = form.cleaned_data.get("date_from")
         if date_from:
             qs = qs.filter(planned_date__gte=date_from)
 
-        date_to = form.cleaned_data.get('date_to')
+        date_to = form.cleaned_data.get("date_to")
         if date_to:
             qs = qs.filter(planned_date__lte=date_to)
 
-        created_from = form.cleaned_data.get('created_from')
+        # Fechas carga
+        created_from = form.cleaned_data.get("created_from")
         if created_from:
             qs = qs.filter(created_at__date__gte=created_from)
 
-        created_to = form.cleaned_data.get('created_to')
+        created_to = form.cleaned_data.get("created_to")
         if created_to:
             qs = qs.filter(created_at__date__lte=created_to)
 
         # Orden
-        order_by = form.cleaned_data.get('order_by')
+        order_by = form.cleaned_data.get("order_by")
         if order_by == "planned_date_asc":
             qs = qs.order_by("planned_date")
         elif order_by == "planned_date_desc":
@@ -294,12 +465,39 @@ def patient_list(request):
             qs = qs.order_by("-created_at")
         else:
             qs = qs.order_by("-created_at")
+    else:
+        qs = qs.order_by("-created_at")
 
-    return render(request, 'core/patient_list.html', {
-        'patients': qs,
-        'form': form,
+    # Opciones para datalist (como Servicio)
+    service_options = list(
+        Patient.objects.exclude(service__isnull=True)
+        .exclude(service__exact="")
+        .values_list("service", flat=True)
+        .distinct()
+        .order_by("service")
+    )
+    doctor_options = list(
+        Patient.objects.exclude(doctor__isnull=True)
+        .exclude(doctor__exact="")
+        .values_list("doctor", flat=True)
+        .distinct()
+        .order_by("doctor")
+    )
+    coverage_options = list(
+        Patient.objects.exclude(coverage__isnull=True)
+        .exclude(coverage__exact="")
+        .values_list("coverage", flat=True)
+        .distinct()
+        .order_by("coverage")
+    )
+
+    return render(request, "core/patient_list.html", {
+        "patients": qs,
+        "form": form,
+        "service_options": service_options,
+        "doctor_options": doctor_options,
+        "coverage_options": coverage_options,
     })
-
 
 # -------------------------------------------------------------
 # DETALLE
@@ -311,7 +509,10 @@ def patient_detail(request, pk):
     attachment_form = AttachmentForm()
     reprogram_form = ReprogramForm()
 
+    back_url = _resolve_next_url(request)
+
     if request.method == "POST":
+        next_url = _resolve_next_url(request)
 
         # ACTUALIZAR ESTADO
         if "update_status" in request.POST:
@@ -321,7 +522,7 @@ def patient_detail(request, pk):
             patient.internal_observations = new_obs
             patient.save()
             messages.success(request, "Estado actualizado.")
-            return redirect("core:patient_detail", pk=patient.pk)
+            return redirect(_build_patient_detail_url(patient.pk, next_url))
 
         # ARCHIVOS
         if "add_attachment" in request.POST:
@@ -331,7 +532,7 @@ def patient_detail(request, pk):
                 att.patient = patient
                 att.save()
                 messages.success(request, "Archivo agregado.")
-                return redirect("core:patient_detail", pk=patient.pk)
+                return redirect(_build_patient_detail_url(patient.pk, next_url))
 
         # REPROGRAMAR
         if "reprogram" in request.POST:
@@ -339,24 +540,22 @@ def patient_detail(request, pk):
             if reprogram_form.is_valid():
                 reprogram_form.save()
                 messages.success(request, "Reprogramación realizada.")
-                return redirect("core:patient_detail", pk=patient.pk)
+                return redirect(_build_patient_detail_url(patient.pk, next_url))
 
         # BORRAR (solo admin)
         if "delete_patient" in request.POST:
             if request.user.is_staff:
                 patient.delete()
                 messages.success(request, "Paciente eliminado.")
-                return redirect("core:patient_list")
-            else:
-                return HttpResponse("No autorizado", status=403)
+                return redirect(next_url)
+            return HttpResponse("No autorizado", status=403)
 
     return render(request, "core/patient_detail.html", {
         "patient": patient,
         "attachment_form": attachment_form,
         "reprogram_form": reprogram_form,
+        "back_url": back_url,
     })
-
-
 # -------------------------------------------------------------
 # COLORES CALENDARIO
 # -------------------------------------------------------------
@@ -448,17 +647,76 @@ def stats_view(request):
 
 @login_required
 def stats_data(request):
-    data = {
-        "by_service": list(Patient.objects.values("service").annotate(count=Count("id")).order_by("-count")),
-        "by_coverage": list(Patient.objects.values("coverage").annotate(count=Count("id")).order_by("-count")[:10]),
-        "by_status": list(Patient.objects.values("status").annotate(count=Count("id")).order_by("-count")),
-    }
-    return JsonResponse(data)
+    # Rango por created_at (fecha de carga)
+    today = timezone.localdate()
+    default_from = today - timedelta(days=6)
+    default_to = today
+
+    start = request.GET.get("from") or str(default_from)   # YYYY-MM-DD
+    end = request.GET.get("to") or str(default_to)
+
+    # parse (seguro)
+    try:
+        start_d = parse_date(start) or default_from
+    except Exception:
+        start_d = default_from
+    try:
+        end_d = parse_date(end) or default_to
+    except Exception:
+        end_d = default_to
+
+    if end_d < start_d:
+        start_d, end_d = end_d, start_d
+
+    base = Patient.objects.filter(created_at__date__gte=start_d, created_at__date__lte=end_d)
+
+    overall_total = base.count()
+    overall_by_status = list(base.values("status").annotate(count=Count("id")).order_by("-count"))
+
+    by_service = list(base.values("service").annotate(count=Count("id")).order_by("-count"))
+    by_coverage = list(base.values("coverage").annotate(count=Count("id")).order_by("-count"))
+
+    # service + status pivot (para stacked + detalle)
+    raw = list(base.values("service", "status").annotate(count=Count("id")))
+    pivot = {}
+    for r in raw:
+        svc = (r.get("service") or "").strip() or "Sin servicio"
+        st = (r.get("status") or "").strip() or "Sin estado"
+        pivot.setdefault(svc, {"service": svc, "total": 0, "status_counts": {}})
+        pivot[svc]["status_counts"][st] = pivot[svc]["status_counts"].get(st, 0) + r["count"]
+        pivot[svc]["total"] += r["count"]
+    by_service_status = sorted(pivot.values(), key=lambda x: x["total"], reverse=True)
+
+    # Períodos: si el rango > 7 días => se parte en bloques consecutivos de 7 días
+    # Periodo 1 = primeros 7 días; Periodo 2 = siguientes 7; Periodo 3 = siguientes 7; etc.
+    days = (end_d - start_d).days + 1
+    periods = []
+    if days > 7:
+        i = 0
+        p_start = start_d
+        while p_start <= end_d:
+            p_end = min(p_start + timedelta(days=6), end_d)
+            pq = Patient.objects.filter(created_at__date__gte=p_start, created_at__date__lte=p_end)
+            periods.append({
+                "label": f"{p_start.strftime('%d/%m')}–{p_end.strftime('%d/%m')}",
+                "start": str(p_start),
+                "end": str(p_end),
+                "total": pq.count(),
+                "by_status": list(pq.values("status").annotate(count=Count("id")).order_by("-count")),
+            })
+            i += 1
+            p_start = p_start + timedelta(days=7)
+
+    return JsonResponse({
+        "range": {"start": str(start_d), "end": str(end_d), "date_field": "created_at"},
+        "overall": {"total": overall_total, "by_status": overall_by_status},
+        "by_service": by_service,
+        "by_coverage": by_coverage,
+        "by_service_status": by_service_status,
+        "periods": periods,
+    })
 
 
-# -------------------------------------------------------------
-# EXPORTS
-# -------------------------------------------------------------
 @login_required
 def export_excel(request):
     wb = openpyxl.Workbook()
@@ -467,15 +725,21 @@ def export_excel(request):
 
     ws.append([
         "Tracking ID", "Nombre", "DNI", "Cobertura",
-        "Médico", "Servicio", "Fecha intervención", "Estado"
+        "Médico", "Servicio", "Fecha intervención", "Estado",
+        "Fecha carga"
     ])
 
-    for p in Patient.objects.all():
+    for p in Patient.objects.all().order_by("-created_at"):
         ws.append([
-            p.tracking_id, p.full_name, p.dni, p.coverage,
-            p.doctor, p.service,
-            p.planned_date.isoformat() if p.planned_date else "",
-            p.get_status_display(),
+            p.tracking_id,
+            p.full_name,
+            p.dni,
+            p.coverage,
+            p.doctor,
+            p.service,
+            p.planned_date.isoformat() if getattr(p, "planned_date", None) else "",
+            p.get_status_display() if hasattr(p, "get_status_display") else (p.status or ""),
+            p.created_at.date().isoformat() if getattr(p, "created_at", None) else "",
         ])
 
     buffer = BytesIO()
@@ -489,8 +753,8 @@ def export_excel(request):
     response["Content-Disposition"] = "attachment; filename=pacientes.xlsx"
     return response
 
-
 @login_required
+
 def export_pdf(request):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)

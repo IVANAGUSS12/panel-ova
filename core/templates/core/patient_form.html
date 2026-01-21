@@ -22,6 +22,18 @@
     </p>
   </div>
 
+  <!-- ✅ AGREGADO: caja de errores del lado del cliente (NO cambia nada de tu form) -->
+  <div id="client-errors" style="
+      display:none;
+      margin: 12px 0 0 0;
+      padding: 12px;
+      border-radius: 10px;
+      background: #ffe8e8;
+      border: 1px solid #ffb3b3;
+      color:#6b0000;
+      font-size:14px;
+  "></div>
+
   {% if success %}
     <div class="alert-success">
       <strong>Solicitud enviada correctamente.</strong><br>
@@ -117,7 +129,7 @@
     <div class="file-grid">
 
       <div class="file-upload-group">
-        <span class="file-upload-label">DNI (frente y dorso)</span>
+        <span class="file-upload-label">DNI (frente)</span>
         <label class="custom-file-label">Subir archivo
           <input type="file" name="dni_file" class="custom-file-input" accept=".pdf,image/*" required>
         </label>
@@ -261,6 +273,41 @@
 }
 </style>
 
+<!-- ✅ AGREGADO: Botón flotante WhatsApp (ícono) -->
+<a
+  class="wpp-float"
+  href="https://wa.me/5491155922359?text=Hola%20necesito%20ayuda%20con%20la%20carga%20de%20Panel%20OVA"
+  target="_blank"
+  rel="noopener"
+  aria-label="WhatsApp"
+  title="WhatsApp"
+>
+  <!-- ícono svg -->
+  <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+    <path fill="#fff" d="M19.11 17.12c-.27-.14-1.6-.79-1.85-.88-.25-.09-.43-.14-.61.14-.18.27-.7.88-.86 1.06-.16.18-.32.2-.59.07-.27-.14-1.15-.42-2.19-1.34-.81-.72-1.36-1.6-1.52-1.87-.16-.27-.02-.42.12-.56.12-.12.27-.32.41-.48.14-.16.18-.27.27-.45.09-.18.05-.34-.02-.48-.07-.14-.61-1.47-.84-2.01-.22-.53-.44-.46-.61-.47l-.52-.01c-.18 0-.48.07-.73.34-.25.27-.95.93-.95 2.26 0 1.33.97 2.62 1.11 2.8.14.18 1.91 2.91 4.63 4.08.65.28 1.16.45 1.56.57.65.21 1.25.18 1.72.11.52-.08 1.6-.65 1.83-1.28.23-.63.23-1.17.16-1.28-.07-.11-.25-.18-.52-.32z"/>
+    <path fill="#fff" d="M16.01 5.33c-5.88 0-10.67 4.78-10.67 10.67 0 1.88.5 3.72 1.45 5.34L5.33 26.67l5.5-1.41c1.56.85 3.32 1.3 5.18 1.3 5.88 0 10.67-4.78 10.67-10.67S21.89 5.33 16.01 5.33zm0 19.27c-1.68 0-3.3-.44-4.71-1.28l-.34-.2-3.26.84.88-3.18-.22-.36c-.88-1.45-1.35-3.12-1.35-4.83 0-5.05 4.11-9.16 9.16-9.16s9.16 4.11 9.16 9.16-4.11 9.16-9.16 9.16z"/>
+  </svg>
+</a>
+
+<style>
+  .wpp-float{
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    width: 56px;
+    height: 56px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    z-index: 99999;
+    box-shadow: 0 8px 20px rgba(0,0,0,.25);
+    background: #25D366;
+  }
+  .wpp-float:hover{ transform: scale(1.06); }
+</style>
+
 <!-- SCRIPT -->
 <script>
 function openGuideModal() {
@@ -298,6 +345,94 @@ document.querySelectorAll('.custom-file-input').forEach(input => {
 document.getElementById("qr-form").addEventListener("submit", function() {
   document.getElementById("sending-overlay").style.display = "flex";
 });
+</script>
+
+<!-- ✅ AGREGADO: Validación antes de enviar (no deja subir y especifica cuál falta) -->
+<script>
+(function () {
+  const form = document.getElementById("qr-form");
+  if (!form) return;
+
+  // ✅ CLAVE: desactiva la validación automática del navegador (sin tocar el HTML)
+  // así el evento submit SIEMPRE llega a tu JS y podés mostrar mensajes.
+  form.noValidate = true;
+
+  const REQUIRED_FILES = [
+    { name: "dni_file", label: "DNI (frente y dorso)" },
+    { name: "credencial_file", label: "Credencial de cobertura" },
+    { name: "orden_intervencion_file", label: "Orden de intervención" }
+  ];
+
+  function setStatus(input, html) {
+    if (!input) return;
+    const group = input.closest('.file-upload-group');
+    if (!group) return;
+    const status = group.querySelector('.file-status');
+    if (status) status.innerHTML = html || "";
+  }
+
+  function showErrors(list) {
+    const box = document.getElementById("client-errors");
+    if (!box) return;
+
+    box.innerHTML =
+      "<strong>No se pudo enviar la solicitud:</strong>" +
+      "<ul style='margin:8px 0 0 18px;'>" +
+      list.map(x => "<li>" + x + "</li>").join("") +
+      "</ul>";
+    box.style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function hideErrors() {
+    const box = document.getElementById("client-errors");
+    if (!box) return;
+    box.style.display = "none";
+    box.innerHTML = "";
+  }
+
+  form.addEventListener("submit", function (e) {
+    const errors = [];
+
+    // 1) Chequeo de archivos obligatorios (SIEMPRE)
+    REQUIRED_FILES.forEach(({ name, label }) => {
+      const input = form.querySelector('input[type="file"][name="' + name + '"]');
+      const ok = input && input.files && input.files.length > 0;
+
+      if (!ok) {
+        errors.push("No se subió " + label + ".");
+        setStatus(input, "<span style='color:#dc3545;font-weight:bold;'>✖ Falta subir archivo</span>");
+      } else {
+        setStatus(input, "<span style='color:#28a745;font-weight:bold;'>✔ Archivo listo</span>");
+      }
+    });
+
+    // 2) Validación del resto de campos obligatorios (selects, date, etc.)
+    const valid = form.checkValidity();
+
+    if (errors.length || !valid) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      const overlay = document.getElementById("sending-overlay");
+      if (overlay) overlay.style.display = "none";
+
+      if (errors.length) {
+        showErrors(errors);
+      } else {
+        // si no faltan archivos, pero hay otro campo requerido
+        showErrors(["Faltan completar campos obligatorios del formulario."]);
+      }
+
+      // muestra los globitos nativos indicando exactamente qué campo falta
+      form.reportValidity();
+      return;
+    }
+
+    hideErrors();
+    // si está todo OK, dejamos que siga normal y tu overlay se prenda
+  }, true);
+})();
 </script>
 
 {% endblock %}
