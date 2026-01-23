@@ -109,6 +109,31 @@
       </datalist>
     </div>
 
+    <!-- USUARIO ASIGNADO -->
+    <div class="form-group">
+      <label for="id_assigned_to">Usuario asignado</label>
+      <select name="assigned_to" id="id_assigned_to" class="form-control">
+        {% for value,label in form.assigned_to.field.choices %}
+          <option value="{{ value }}" {% if request.GET.assigned_to == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- FILTROS ESPECIALES -->
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="urgent_only" value="1" {% if request.GET.urgent_only %}checked{% endif %}>
+        Solo urgentes (≤2 días)
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="missing_docs" value="1" {% if request.GET.missing_docs %}checked{% endif %}>
+        Con documentos faltantes
+      </label>
+    </div>
+
     <div class="form-group">
       <label for="id_date_from">Fecha cirugía desde</label>
       {{ form.date_from }}
@@ -153,6 +178,7 @@
         <th>Médico</th>
         <th>Servicio</th>
         <th>Fecha cirugía</th>
+        <th>Usuario asignado</th>
         <th>Estado</th>
         <th></th>
       </tr>
@@ -160,13 +186,26 @@
 
     <tbody>
       {% for p in patients %}
-        <tr>
-          <td>{{ p.tracking_id }}</td>
+        <tr {% if p.is_urgent %}class="urgent-row"{% endif %}>
+          <td>
+            {{ p.tracking_id }}
+            {% if p.is_urgent %}
+              <span class="alert-icon" title="Cirugía en {{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %}">⚠️</span>
+            {% endif %}
+          </td>
           <td>{{ p.full_name }}</td>
           <td>{{ p.coverage }}</td>
           <td>{{ p.doctor }}</td>
           <td>{{ p.service }}</td>
-          <td>{{ p.planned_date|date:"d/m/Y" }}</td>
+          <td>
+            {{ p.planned_date|date:"d/m/Y" }}
+            {% if p.is_urgent %}
+              <span class="badge alert-urgent">
+                URGENTE ({{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %})
+              </span>
+            {% endif %}
+          </td>
+          <td>{{ p.assigned_to.username|default:"-" }}</td>
 
           <td>
             {% if p.status == 'AUTORIZADO' %}
@@ -184,6 +223,9 @@
             {% else %}
               <span class="badge">{{ p.get_status_display }}</span>
             {% endif %}
+            {% if p.missing_attachments %}
+              <div class="missing-docs">📎 Faltan docs</div>
+            {% endif %}
           </td>
 
           <td>
@@ -197,7 +239,7 @@
         </tr>
       {% empty %}
         <tr>
-          <td colspan="8">No hay pacientes con los filtros actuales.</td>
+          <td colspan="9">No hay pacientes con los filtros actuales.</td>
         </tr>
       {% endfor %}
     </tbody>

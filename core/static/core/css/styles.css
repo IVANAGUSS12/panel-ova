@@ -611,6 +611,43 @@ textarea:focus {
   border: 1px solid #c7d2fe;
 }
 
+/* ================================
+   ALERTAS / URGENCIAS
+   ================================ */
+
+.alert-urgent {
+  background: #fef3c7;
+  color: #92400e;
+  border: 2px solid #fbbf24;
+  font-weight: 600;
+  animation: pulse-alert 2s ease-in-out infinite;
+}
+
+@keyframes pulse-alert {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.alert-icon {
+  display: inline-block;
+  margin-right: 0.3rem;
+}
+
+.urgent-row {
+  background-color: #fffbeb !important;
+  border-left: 4px solid #f59e0b;
+}
+
+.missing-docs {
+  font-size: 0.75rem;
+  color: #dc2626;
+  font-weight: 500;
+}
+
 /* Botones pequeños (Ver / Descargar / Volver) */
 
 .btn-small {

@@ -3,6 +3,49 @@
 
 {% block content %}
 
+<!-- ALERTA DE URGENCIAS -->
+{% if urgencias_count > 0 %}
+<section class="card" style="border-left: 4px solid #f59e0b; background-color: #fffbeb;">
+  <div class="card-header">
+    <h2 style="color: #92400e;">⚠️ URGENCIAS - Cirugías en 48 horas</h2>
+    <p class="card-sub" style="color: #92400e;">
+      Hay {{ urgencias_count }} cirugía{% if urgencias_count != 1 %}s{% endif %} programada{% if urgencias_count != 1 %}s{% endif %} en los próximos 2 días que requieren atención.
+    </p>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Paciente</th>
+        <th>Servicio</th>
+        <th>Usuario</th>
+        <th>Estado</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in urgencias %}
+        <tr class="urgent-row">
+          <td>
+            <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
+            <span class="badge alert-urgent">{{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %}</span>
+          </td>
+          <td>{{ p.full_name }}</td>
+          <td>{{ p.service }}</td>
+          <td>{{ p.assigned_to.username|default:"-" }}</td>
+          <td><span class="badge">{{ p.get_status_display }}</span></td>
+          <td>
+            <a href="{% url 'core:patient_detail' p.pk %}" class="btn-primary btn-small">Ver</a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<!-- RESUMEN GENERAL -->
 <section class="card">
   <div class="card-header">
     <h2>Resumen general</h2>
@@ -17,8 +60,49 @@
   <ul>
     <li>En el mes actual: <strong>{{ total_mes }}</strong></li>
     <li>Últimos 7 días: <strong>{{ total_semana }}</strong></li>
+    <li style="color: #dc2626; font-weight: 600;">Sin asignar: <strong>{{ sin_asignar }}</strong></li>
   </ul>
 </section>
+
+<!-- MIS CASOS ASIGNADOS -->
+{% if mis_casos %}
+<section class="card">
+  <div class="card-header">
+    <h2>Mis casos asignados (últimos 10)</h2>
+    <p class="card-sub">
+      Casos que te han sido asignados recientemente.
+    </p>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Paciente</th>
+        <th>Servicio</th>
+        <th>Fecha cirugía</th>
+        <th>Estado</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in mis_casos %}
+        <tr {% if p.is_urgent %}class="urgent-row"{% endif %}>
+          <td>
+            {{ p.full_name }}
+            {% if p.is_urgent %}<span class="alert-icon">⚠️</span>{% endif %}
+          </td>
+          <td>{{ p.service }}</td>
+          <td>{{ p.planned_date|date:"d/m/Y" }}</td>
+          <td><span class="badge">{{ p.get_status_display }}</span></td>
+          <td>
+            <a href="{% url 'core:patient_detail' p.pk %}" class="btn-ghost btn-small">Ver</a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 
 <section class="card">
   <div class="card-header">

@@ -34,8 +34,13 @@ class PatientFilterForm(forms.Form):
     # Se completan dinámicamente
     coverage = forms.ChoiceField(required=False, label='Cobertura', choices=[])
     doctor = forms.ChoiceField(required=False, label='Médico', choices=[])
+    assigned_to = forms.ChoiceField(required=False, label='Usuario asignado', choices=[])
 
     service = forms.CharField(required=False, label='Servicio')
+    
+    # Filtros especiales
+    urgent_only = forms.BooleanField(required=False, label='Solo urgentes (≤2 días)')
+    missing_docs = forms.BooleanField(required=False, label='Con documentos faltantes')
 
     # Fechas de cirugía
     date_from = forms.DateField(
@@ -101,6 +106,13 @@ class PatientFilterForm(forms.Form):
         )
         self.fields['doctor'].choices = [('', 'Todos')] + [
             (d, d) for d in doctors
+        ]
+        
+        # Usuarios asignados
+        from django.contrib.auth.models import User
+        users = User.objects.filter(is_active=True).order_by('username')
+        self.fields['assigned_to'].choices = [('', 'Todos'), ('unassigned', 'Sin asignar')] + [
+            (u.id, u.username) for u in users
         ]
 
 

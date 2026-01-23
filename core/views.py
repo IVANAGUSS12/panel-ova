@@ -24,7 +24,7 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.csrf import csrf_exempt
 
 from .forms import QRPatientForm, AttachmentForm, PatientFilterForm, ReprogramForm
-from .models import Patient, Attachment
+from .models import Patient, Attachment, PatientHistory
 
 # -------------------------------------------------------------
 # LISTAS (servicios, médicos, coberturas)
@@ -154,7 +154,8 @@ MEDICOS_QR = [
     'TRENTACOSTE LUIS',
     'VEGA PABLO',
     'VILLAR DIEGO',
-
+    'BARRERA DARIO',
+ 
     # UROLOGIA
     'ANGELONI, BRUNO GABRIEL',
     'BALDESSARI, CARLOS MARTIN',
@@ -193,30 +194,41 @@ MEDICOS_QR = [
     'VIOLA AGUSTIN JAVIER',
 	
     # CIRUGIA OTORRINO',
-    'NEMECIO ALAN',
-    'BLANC ARIANA',
-    'VALDEZ GABRIEL ANIBAL',
-    'RAMIREZ ZAIDA',
-    'GONZALEZ ARECES MARIELA ALEJANDRA',
-    'BERMUDEZ ARIEL LEONARDO',
-    'VITI MARIA MARTA',
-    'MAZZEI PAULA CECILIA',
-    'ARMIJOS KARLA',
-    'MICHALSKI DIEGO JULIAN',
-    'LOPEZ MORIS CARLOS BENJAMIN',
-    'SARTORI MARIA VERONICA',
-    'MUSACCHIO CECILIA',
-    'MARENGO RICARDO LUIS',
-    'VALERIO ANDREA',
+    'MARENGO RICARDO',
     'SZTAJN MARCELO',
-    'EISEMBERG GULLERMO DANIEL',
-    'FERNANDEZ LUCIA',
-    'JUCHLI MARIANA LIA',
-    'GATICA VERONICA DEL ROSARIO',
-    'NISTAL CLARA',
-    'CURI JUAN RAMON',
+    'MICHALSKI JULIÁN',
+    'VALDEZ GABRIEL',
+    'GONZÁLEZ ARECES MARIELA',
+    'SARTORI MARÍA VERÓNICA',
+    'JUCHLI MARIANA',
+    'VITI MARÍA',
+    'LÓPEZ MORIS CARLOS',
+    'NISTAL COELHO CLARA',
+    'BIALOLIENKIER SEBASTIÁN',
+    'MERESMAN GRACIELA',
+    'GOLIAN IGNACIO',
+    'MONDINO GUSTAVO',
+    'BERMÚDEZ ARIEL',
+    'MUSACCHIO CECILIA',
+    'EISENBERG GUILLERMO',
+    'CASARETTO JUAN',
+    'SOTO PAULA',
+    'TISCORNIA CARLOS',
+    'PIRAS DANIELA',
+    'GATICA VERÓNICA',
+    'GRIMOLDI HÉCTOR',
+    'CURI JUAN RAMÓN',
+    'RIOLFI NAZARENO',
+    'RAMÍREZ ZAIDA',
+    'VALERIO ANDREA',
+    'NEMESIO ALAN',
+    'BLANC ARIANA',
+    'DOMEG BELEN',
     'FARAGO ESTEBAN',
-    'DOMEG MARIA BELEN',
+    'SCHLENKER GERMAN',
+    'ARMIJOS KARLA',
+    'PICCOLETTI LAURA',
+    'FERNANDEZ LUCÍA'
 ]
  
 COBERTURAS_QR = [
@@ -304,6 +316,15 @@ def qr_patient_create(request):
             service=service,
             planned_date=planned_date,
             external_observations=external_observations,
+            assigned_to=request.user if request.user.is_authenticated else None,
+        )
+        
+        # Registrar creación en historial
+        PatientHistory.objects.create(
+            patient=patient,
+            user=request.user if request.user.is_authenticated else None,
+            action=PatientHistory.ACTION_CREATE,
+            notes=f'Paciente creado - {service}'
         )
 
         # Archivos
@@ -347,6 +368,7 @@ def dashboard(request):
     hoy = timezone.localdate()
     inicio_mes = hoy.replace(day=1)
     hace_7_dias = hoy - timedelta(days=7)
+    dos_dias_adelante = hoy + timedelta(days=2)
 
     total = Patient.objects.count()
     total_mes = Patient.objects.filter(created_at__date__gte=inicio_mes).count()
@@ -354,12 +376,32 @@ def dashboard(request):
 
     raw_por_estado = Patient.objects.values('status').annotate(c=Count('id'))
     mapa_estados = {row['status']: row['c'] for row in raw_por_estado}
+    
+    # Urgencias (cirugías en 0-2 días)
+    urgencias = Patient.objects.filter(
+        planned_date__gte=hoy,
+        planned_date__lte=dos_dias_adelante
+    ).select_related('assigned_to').order_by('planned_date', 'service')
+    
+    # Casos asignados al usuario actual
+    mis_casos = Patient.objects.filter(
+        assigned_to=request.user
+    ).order_by('-created_at')[:10] if request.user.is_authenticated else []
+    
+    # Casos sin asignar
+    sin_asignar = Patient.objects.filter(
+        assigned_to__isnull=True
+    ).exclude(status=Patient.STATUS_RECHAZO).count()
 
     context = {
         "hoy": hoy,
         "total": total,
         "total_mes": total_mes,
         "total_semana": total_semana,
+        "urgencias": urgencias,
+        "urgencias_count": urgencias.count(),
+        "mis_casos": mis_casos,
+        "sin_asignar": sin_asignar,
         "status_summary": [
             {"label": "Pendientes", "code": Patient.STATUS_PENDIENTE, "count": mapa_estados.get(Patient.STATUS_PENDIENTE, 0)},
             {"label": "Solicitados", "code": Patient.STATUS_SOLICITADO, "count": mapa_estados.get(Patient.STATUS_SOLICITADO, 0)},
@@ -434,6 +476,30 @@ def patient_list(request):
         service = form.cleaned_data.get("service")
         if service:
             qs = qs.filter(service__icontains=service)
+        
+        # Usuario asignado
+        assigned_to = form.cleaned_data.get("assigned_to")
+        if assigned_to:
+            if assigned_to == 'unassigned':
+                qs = qs.filter(assigned_to__isnull=True)
+            else:
+                qs = qs.filter(assigned_to__id=assigned_to)
+        
+        # Solo urgentes
+        urgent_only = form.cleaned_data.get("urgent_only")
+        if urgent_only:
+            today = timezone.localdate()
+            two_days_later = today + timedelta(days=2)
+            qs = qs.filter(planned_date__gte=today, planned_date__lte=two_days_later)
+        
+        # Con documentos faltantes
+        missing_docs = form.cleaned_data.get("missing_docs")
+        if missing_docs:
+            # Filtrar pacientes que no tienen todos los docs requeridos
+            from django.db.models import Count
+            qs = qs.annotate(
+                attachment_count=Count('attachments')
+            ).filter(attachment_count__lt=3)  # Menos de 3 docs obligatorios
 
         # Fechas cirugía
         date_from = form.cleaned_data.get("date_from")
@@ -516,10 +582,56 @@ def patient_detail(request, pk):
 
         # ACTUALIZAR ESTADO
         if "update_status" in request.POST:
+            old_status = patient.status
+            old_assigned = patient.assigned_to
+            
             new_status = request.POST.get("status", patient.status)
             new_obs = request.POST.get("internal_observations", "").strip()
+            assigned_to_id = request.POST.get("assigned_to")
+            
             patient.status = new_status
             patient.internal_observations = new_obs
+            
+            # Registrar cambio de estado
+            if old_status != new_status:
+                PatientHistory.objects.create(
+                    patient=patient,
+                    user=request.user,
+                    action=PatientHistory.ACTION_STATUS_CHANGE,
+                    field_name='status',
+                    old_value=old_status,
+                    new_value=new_status
+                )
+            
+            # Actualizar usuario asignado
+            if assigned_to_id:
+                from django.contrib.auth.models import User
+                try:
+                    new_assigned = User.objects.get(pk=assigned_to_id)
+                    if old_assigned != new_assigned:
+                        patient.assigned_to = new_assigned
+                        PatientHistory.objects.create(
+                            patient=patient,
+                            user=request.user,
+                            action=PatientHistory.ACTION_ASSIGN,
+                            field_name='assigned_to',
+                            old_value=old_assigned.username if old_assigned else 'Sin asignar',
+                            new_value=new_assigned.username
+                        )
+                except User.DoesNotExist:
+                    pass
+            else:
+                if old_assigned is not None:
+                    patient.assigned_to = None
+                    PatientHistory.objects.create(
+                        patient=patient,
+                        user=request.user,
+                        action=PatientHistory.ACTION_ASSIGN,
+                        field_name='assigned_to',
+                        old_value=old_assigned.username,
+                        new_value='Sin asignar'
+                    )
+                
             patient.save()
             messages.success(request, "Estado actualizado.")
             return redirect(_build_patient_detail_url(patient.pk, next_url))
@@ -538,7 +650,20 @@ def patient_detail(request, pk):
         if "reprogram" in request.POST:
             reprogram_form = ReprogramForm(request.POST, instance=patient)
             if reprogram_form.is_valid():
+                old_date = patient.planned_date
                 reprogram_form.save()
+                
+                # Registrar reprogramación en historial
+                PatientHistory.objects.create(
+                    patient=patient,
+                    user=request.user,
+                    action=PatientHistory.ACTION_REPROGRAM,
+                    field_name='planned_date',
+                    old_value=str(old_date) if old_date else 'Sin fecha',
+                    new_value=str(patient.planned_date),
+                    notes=patient.last_reprogram_reason
+                )
+                
                 messages.success(request, "Reprogramación realizada.")
                 return redirect(_build_patient_detail_url(patient.pk, next_url))
 
@@ -550,11 +675,15 @@ def patient_detail(request, pk):
                 return redirect(next_url)
             return HttpResponse("No autorizado", status=403)
 
+    from django.contrib.auth.models import User
+    users = User.objects.filter(is_active=True).order_by('username')
+    
     return render(request, "core/patient_detail.html", {
         "patient": patient,
         "attachment_form": attachment_form,
         "reprogram_form": reprogram_form,
         "back_url": back_url,
+        "users": users,
     })
 # -------------------------------------------------------------
 # COLORES CALENDARIO

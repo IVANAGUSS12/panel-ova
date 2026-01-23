@@ -23,6 +23,7 @@
   <div class="detail-grid">
     <div class="detail-column">
       <h3 class="section-title">Datos del paciente</h3>
+      <p><strong>Usuario asignado:</strong> {{ patient.assigned_to.username|default:"-" }}</p>
       <p><strong>Médico:</strong> {{ patient.doctor }}</p>
       <p><strong>Servicio:</strong> {{ patient.service }}</p>
       <p><strong>Fecha probable intervención:</strong> {{ patient.planned_date|date:"d/m/Y" }}</p>
@@ -61,6 +62,18 @@
             {% for value,label in patient.STATUS_CHOICES %}
               <option value="{{ value }}" {% if value == patient.status %}selected{% endif %}>
                 {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="id_assigned_to">Usuario asignado</label>
+          <select name="assigned_to" id="id_assigned_to" class="form-control">
+            <option value="">-- Sin asignar --</option>
+            {% for user in users %}
+              <option value="{{ user.pk }}" {% if patient.assigned_to.pk == user.pk %}selected{% endif %}>
+                {{ user.username }}{% if user.first_name or user.last_name %} ({{ user.get_full_name }}){% endif %}
               </option>
             {% endfor %}
           </select>
@@ -136,6 +149,32 @@
           <button type="submit" class="btn-secondary">Reprogramar</button>
         </div>
       </form>
+
+      <h3 class="section-title">Historial de cambios</h3>
+      <ul class="attachments-list">
+        {% for h in patient.history.all|slice:":10" %}
+          <li>
+            <div class="attachment-main">
+              <span class="attachment-label">{{ h.get_action_display }}</span>
+              <span class="attachment-meta">
+                {{ h.created_at|date:"d/m/Y H:i" }} - {{ h.user.username|default:"Sistema" }}
+              </span>
+            </div>
+            {% if h.old_value or h.new_value %}
+              <div style="font-size: 0.85em; color: #666;">
+                {% if h.old_value %}{{ h.old_value }} →{% endif %} {{ h.new_value }}
+              </div>
+            {% endif %}
+            {% if h.notes %}
+              <div style="font-size: 0.85em; color: #666; font-style: italic;">
+                {{ h.notes }}
+              </div>
+            {% endif %}
+          </li>
+        {% empty %}
+          <li>Sin historial de cambios.</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
 </section>

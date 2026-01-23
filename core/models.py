@@ -46,6 +46,15 @@ class Patient(models.Model):
     last_reprogram_reason = models.TextField(blank=True, null=True)
 
     tracking_id = models.CharField(max_length=32, unique=True, editable=False)
+    
+    assigned_to = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_patients',
+        verbose_name='Usuario asignado'
+    )
 
     def save(self, *args, **kwargs):
         # 👇 Normalizar a MAYÚSCULAS
@@ -69,6 +78,31 @@ class Patient(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.dni})"
+    
+    def is_urgent(self):
+        """Retorna True si la cirugía es en 2 días o menos (pero no pasada)"""
+        if not self.planned_date:
+            return False
+        today = timezone.localdate()
+        days_until = (self.planned_date - today).days
+        return 0 <= days_until <= 2
+    
+    def days_until_surgery(self):
+        """Retorna cuántos días faltan para la cirugía (negativo si ya pasó)"""
+        if not self.planned_date:
+            return None
+        today = timezone.localdate()
+        return (self.planned_date - today).days
+    
+    def missing_attachments(self):
+        """Retorna lista de tipos de documentos que faltan"""
+        existing_types = set(self.attachments.values_list('type', flat=True))
+        required_types = {
+            Attachment.TYPE_CREDENCIAL,
+            Attachment.TYPE_DNI,
+            Attachment.TYPE_ORDEN,
+        }
+        return list(required_types - existing_types)
 
 
 class Attachment(models.Model):
@@ -98,6 +132,50 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f"{self.patient} - {self.get_type_display()}"
+
+
+class PatientHistory(models.Model):
+    """Historial de cambios importantes en un paciente"""
+    ACTION_CREATE = 'CREATE'
+    ACTION_STATUS_CHANGE = 'STATUS_CHANGE'
+    ACTION_ASSIGN = 'ASSIGN'
+    ACTION_REPROGRAM = 'REPROGRAM'
+    ACTION_UPDATE = 'UPDATE'
+    
+    ACTION_CHOICES = [
+        (ACTION_CREATE, 'Creación'),
+        (ACTION_STATUS_CHANGE, 'Cambio de estado'),
+        (ACTION_ASSIGN, 'Asignación de usuario'),
+        (ACTION_REPROGRAM, 'Reprogramación'),
+        (ACTION_UPDATE, 'Actualización'),
+    ]
+    
+    patient = models.ForeignKey(
+        Patient,
+        on_delete=models.CASCADE,
+        related_name='history'
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    field_name = models.CharField(max_length=100, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Historial de paciente'
+        verbose_name_plural = 'Historiales de pacientes'
+    
+    def __str__(self):
+        who = self.user.username if self.user else 'Sistema'
+        return f"[{self.created_at}] {who} - {self.get_action_display()} - {self.patient.full_name}"
 
 
 class AuditLog(models.Model):
