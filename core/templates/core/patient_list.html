@@ -120,17 +120,17 @@
     </div>
 
     <!-- FILTROS ESPECIALES -->
-    <div class="form-group">
-      <label>
-        <input type="checkbox" name="urgent_only" value="1" {% if request.GET.urgent_only %}checked{% endif %}>
-        Solo urgentes (≤2 días)
+    <div class="form-group" style="background: linear-gradient(135deg, #fef3c7, #fef9e6); padding: 1rem; border-radius: 8px; border: 2px solid #fbbf24;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: #92400e; cursor: pointer;">
+        <input type="checkbox" name="urgent_only" value="1" {% if request.GET.urgent_only %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;">
+        <span>🔥 Solo urgentes (≤2 días)</span>
       </label>
     </div>
 
-    <div class="form-group">
-      <label>
-        <input type="checkbox" name="missing_docs" value="1" {% if request.GET.missing_docs %}checked{% endif %}>
-        Con documentos faltantes
+    <div class="form-group" style="background: linear-gradient(135deg, #fee2e2, #fef2f2); padding: 1rem; border-radius: 8px; border: 2px solid #f87171;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: #991b1b; cursor: pointer;">
+        <input type="checkbox" name="missing_docs" value="1" {% if request.GET.missing_docs %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;">
+        <span>📎 Con documentos faltantes</span>
       </label>
     </div>
 
@@ -200,8 +200,9 @@
           <td>
             {{ p.planned_date|date:"d/m/Y" }}
             {% if p.is_urgent %}
+              <br>
               <span class="badge alert-urgent">
-                URGENTE ({{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %})
+                🔥 URGENTE - {{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %}
               </span>
             {% endif %}
           </td>

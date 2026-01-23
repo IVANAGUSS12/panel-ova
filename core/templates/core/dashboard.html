@@ -5,12 +5,21 @@
 
 <!-- ALERTA DE URGENCIAS -->
 {% if urgencias_count > 0 %}
-<section class="card" style="border-left: 4px solid #f59e0b; background-color: #fffbeb;">
+<div class="alert-notification">
+  <div class="alert-notification-header">
+    <div class="alert-notification-icon">🚨</div>
+    <div style="flex: 1;">
+      <h2 class="alert-notification-title">¡ATENCIÓN! CIRUGÍAS URGENTES</h2>
+      <p class="alert-notification-subtitle">
+        {{ urgencias_count }} cirugía{% if urgencias_count != 1 %}s{% endif %} programada{% if urgencias_count != 1 %}s{% endif %} en las próximas 48 horas
+      </p>
+    </div>
+    <div class="alert-notification-badge">{{ urgencias_count }}</div>
+  </div>
+  
+  <section class="card" style="margin: 0; background: white;">
   <div class="card-header">
-    <h2 style="color: #92400e;">⚠️ URGENCIAS - Cirugías en 48 horas</h2>
-    <p class="card-sub" style="color: #92400e;">
-      Hay {{ urgencias_count }} cirugía{% if urgencias_count != 1 %}s{% endif %} programada{% if urgencias_count != 1 %}s{% endif %} en los próximos 2 días que requieren atención.
-    </p>
+    <h3 style="margin: 0; font-size: 1rem;">Casos que requieren atención inmediata</h3>
   </div>
 
   <table class="table">
@@ -42,7 +51,8 @@
       {% endfor %}
     </tbody>
   </table>
-</section>
+  </section>
+</div>
 {% endif %}
 
 <!-- RESUMEN GENERAL -->
