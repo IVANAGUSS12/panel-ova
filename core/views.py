@@ -34,12 +34,17 @@ from .models import Patient, Attachment, PatientHistory
 # HELPERS (persistencia filtros / búsqueda tolerante)
 # -------------------------------------------------------------
 def _normalize_text(value: str) -> str:
-    """Normaliza texto: sin acentos + case-insensitive (para búsquedas más humanas)."""
+    """Normaliza texto: sin acentos, sin puntuación + case-insensitive (para búsquedas más humanas)."""
     s = (value or "").strip()
     if not s:
         return ""
+    # Remover acentos
     s = unicodedata.normalize("NFKD", s)
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    # Remover puntuación común (comas, puntos, guiones, etc)
+    s = s.replace(",", " ").replace(".", " ").replace("-", " ").replace("_", " ")
+    # Remover espacios múltiples
+    s = " ".join(s.split())
     return s.casefold()
 
 
