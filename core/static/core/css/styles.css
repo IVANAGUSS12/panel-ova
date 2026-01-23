@@ -672,15 +672,15 @@ textarea:focus {
 
 .alert-notification-icon {
   font-size: 2.5rem;
-  animation: bounce 1s infinite;
+  animation: bounce-subtle 2s ease-in-out infinite;
 }
 
-@keyframes bounce {
+@keyframes bounce-subtle {
   0%, 100% {
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-5px);
+    transform: translateY(-3px);
   }
 }
 
@@ -744,14 +744,14 @@ textarea:focus {
 .alert-icon {
   display: inline-block;
   margin-right: 0.3rem;
-  font-size: 1.2em;
-  animation: wiggle 0.5s ease-in-out infinite;
+  font-size: 1.1em;
+  animation: wiggle-subtle 3s ease-in-out infinite;
 }
 
-@keyframes wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-10deg); }
-  75% { transform: rotate(10deg); }
+@keyframes wiggle-subtle {
+  0%, 90%, 100% { transform: rotate(0deg); }
+  92%, 96% { transform: rotate(-5deg); }
+  94%, 98% { transform: rotate(5deg); }
 }
 
 .urgent-row {
