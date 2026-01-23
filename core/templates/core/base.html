@@ -6,8 +6,8 @@
     <title>{% block title %}Panel OVA{% endblock %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- CSS propio -->
-    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v={{ request.GET.urlencode }}{% now 'U' %}">
+    <!-- CSS propio con cache busting -->
+    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v=20260123">
 
     <!-- FullCalendar (CSS) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
