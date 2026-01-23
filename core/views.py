@@ -492,15 +492,6 @@ def patient_list(request):
             today = timezone.localdate()
             two_days_later = today + timedelta(days=2)
             qs = qs.filter(planned_date__gte=today, planned_date__lte=two_days_later)
-        
-        # Con documentos faltantes
-        missing_docs = form.cleaned_data.get("missing_docs")
-        if missing_docs:
-            # Filtrar pacientes que no tienen todos los docs requeridos
-            from django.db.models import Count
-            qs = qs.annotate(
-                attachment_count=Count('attachments')
-            ).filter(attachment_count__lt=3)  # Menos de 3 docs obligatorios
 
         # Fechas cirugía
         date_from = form.cleaned_data.get("date_from")

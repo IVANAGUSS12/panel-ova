@@ -40,7 +40,6 @@ class PatientFilterForm(forms.Form):
     
     # Filtros especiales
     urgent_only = forms.BooleanField(required=False, label='Solo urgentes (≤2 días)')
-    missing_docs = forms.BooleanField(required=False, label='Con documentos faltantes')
 
     # Fechas de cirugía
     date_from = forms.DateField(
