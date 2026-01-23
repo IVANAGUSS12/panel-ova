@@ -393,21 +393,13 @@ def dashboard(request):
     mis_casos = Patient.objects.filter(
         assigned_to=request.user
     ).order_by('-created_at')[:10] if request.user.is_authenticated else []
-    
-    # Casos sin asignar
-    sin_asignar = Patient.objects.filter(
-        assigned_to__isnull=True
-    ).exclude(status=Patient.STATUS_RECHAZO).count()
 
     context = {
         "hoy": hoy,
         "total": total,
         "total_mes": total_mes,
         "total_semana": total_semana,
-        "urgencias": urgencias,
-        "urgencias_count": urgencias.count(),
         "mis_casos": mis_casos,
-        "sin_asignar": sin_asignar,
         "status_summary": [
             {"label": "Pendientes", "code": Patient.STATUS_PENDIENTE, "count": mapa_estados.get(Patient.STATUS_PENDIENTE, 0)},
             {"label": "Solicitados", "code": Patient.STATUS_SOLICITADO, "count": mapa_estados.get(Patient.STATUS_SOLICITADO, 0)},
@@ -553,6 +545,14 @@ def patient_list(request):
         .distinct()
         .order_by("coverage")
     )
+    
+    # Urgencias (solo futuras: 0-2 días)
+    hoy = timezone.localdate()
+    dos_dias_adelante = hoy + timedelta(days=2)
+    urgencias = Patient.objects.filter(
+        planned_date__gte=hoy,
+        planned_date__lte=dos_dias_adelante
+    ).select_related('assigned_to').order_by('planned_date', 'service')
 
     return render(request, "core/patient_list.html", {
         "patients": qs,
@@ -560,6 +560,8 @@ def patient_list(request):
         "service_options": service_options,
         "doctor_options": doctor_options,
         "coverage_options": coverage_options,
+        "urgencias": urgencias,
+        "urgencias_count": urgencias.count(),
     })
 
 # -------------------------------------------------------------

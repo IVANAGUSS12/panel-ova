@@ -3,56 +3,6 @@
 
 {% block content %}
 
-<!-- ALERTA DE URGENCIAS -->
-{% if urgencias_count > 0 %}
-<div class="alert-notification">
-  <div class="alert-notification-header">
-    <div class="alert-notification-icon">🚨</div>
-    <div style="flex: 1;">
-      <h2 class="alert-notification-title">¡ATENCIÓN! CIRUGÍAS URGENTES</h2>
-      <p class="alert-notification-subtitle">
-        {{ urgencias_count }} cirugía{% if urgencias_count != 1 %}s{% endif %} programada{% if urgencias_count != 1 %}s{% endif %} en las próximas 48 horas
-      </p>
-    </div>
-    <div class="alert-notification-badge">{{ urgencias_count }}</div>
-  </div>
-  
-  <div class="alert-notification-content">
-    <h3 class="alert-notification-content-title">Casos que requieren atención inmediata</h3>
-
-    <table class="table">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Paciente</th>
-        <th>Servicio</th>
-        <th>Usuario</th>
-        <th>Estado</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in urgencias %}
-        <tr class="urgent-row">
-          <td>
-            <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
-            <span class="badge alert-urgent">{{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %}</span>
-          </td>
-          <td>{{ p.full_name }}</td>
-          <td>{{ p.service }}</td>
-          <td>{{ p.assigned_to.username|default:"-" }}</td>
-          <td><span class="badge">{{ p.get_status_display }}</span></td>
-          <td>
-            <a href="{% url 'core:patient_detail' p.pk %}" class="btn-primary btn-small">Ver</a>
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</div>
-{% endif %}
-
 <!-- RESUMEN GENERAL -->
 <section class="card">
   <div class="card-header">
@@ -68,7 +18,6 @@
   <ul>
     <li>En el mes actual: <strong>{{ total_mes }}</strong></li>
     <li>Últimos 7 días: <strong>{{ total_semana }}</strong></li>
-    <li class="sin-asignar-text">Sin asignar: <strong>{{ sin_asignar }}</strong></li>
   </ul>
 </section>
 

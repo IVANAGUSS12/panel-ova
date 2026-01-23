@@ -2,6 +2,71 @@
 {% block title %}Solicitudes - Panel OVA{% endblock %}
 
 {% block content %}
+
+<!-- ALERTA DE CIRUGÍAS PRÓXIMAS (naranja suave) -->
+{% if urgencias_count > 0 %}
+<div class="alert-priority">
+  <div class="alert-priority-header">
+    <div class="alert-priority-icon">⚠️</div>
+    <div style="flex: 1;">
+      <h2 class="alert-priority-title">CIRUGÍAS PRÓXIMAS - DAR PRIORIDAD</h2>
+      <p class="alert-priority-subtitle">
+        {{ urgencias_count }} cirugía{% if urgencias_count != 1 %}s{% endif %} programada{% if urgencias_count != 1 %}s{% endif %} en las próximas 48 horas
+      </p>
+    </div>
+    <div class="alert-priority-badge">{{ urgencias_count }}</div>
+  </div>
+  
+  <div class="alert-priority-content">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Paciente</th>
+          <th>Servicio</th>
+          <th>Usuario</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in urgencias %}
+          <tr class="priority-row">
+            <td>
+              <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
+              <span class="badge badge-priority">{{ p.days_until_surgery }} día{% if p.days_until_surgery != 1 %}s{% endif %}</span>
+            </td>
+            <td>{{ p.full_name }}</td>
+            <td>{{ p.service }}</td>
+            <td>{{ p.assigned_to.username|default:"-" }}</td>
+            <td>
+              {% if p.status == 'AUTORIZADO' %}
+                <span class="badge badge-autorizado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'PENDIENTE' %}
+                <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+              {% elif p.status == 'SOLICITADO' %}
+                <span class="badge badge-solicitado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'MATERIAL_PENDIENTE' %}
+                <span class="badge badge-material">{{ p.get_status_display }}</span>
+              {% elif p.status == 'RECHAZO' %}
+                <span class="badge badge-rechazado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'REPROGRAMADO' %}
+                <span class="badge badge-reprogramado">{{ p.get_status_display }}</span>
+              {% else %}
+                <span class="badge">{{ p.get_status_display }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'core:patient_detail' p.pk %}" class="btn-primary btn-small">Ver</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <section class="card">
   <div class="card-header">
     <div>
