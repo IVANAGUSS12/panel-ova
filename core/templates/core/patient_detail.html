@@ -161,12 +161,12 @@
               </span>
             </div>
             {% if h.old_value or h.new_value %}
-              <div style="font-size: 0.85em; color: #666;">
+              <div class="history-detail">
                 {% if h.old_value %}{{ h.old_value }} →{% endif %} {{ h.new_value }}
               </div>
             {% endif %}
             {% if h.notes %}
-              <div style="font-size: 0.85em; color: #666; font-style: italic;">
+              <div class="history-detail notes">
                 {{ h.notes }}
               </div>
             {% endif %}

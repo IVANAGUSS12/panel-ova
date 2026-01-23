@@ -17,12 +17,10 @@
     <div class="alert-notification-badge">{{ urgencias_count }}</div>
   </div>
   
-  <section class="card" style="margin: 0; background: white;">
-  <div class="card-header">
-    <h3 style="margin: 0; font-size: 1rem;">Casos que requieren atención inmediata</h3>
-  </div>
+  <div class="alert-notification-content">
+    <h3 class="alert-notification-content-title">Casos que requieren atención inmediata</h3>
 
-  <table class="table">
+    <table class="table">
     <thead>
       <tr>
         <th>Fecha</th>
@@ -51,7 +49,7 @@
       {% endfor %}
     </tbody>
   </table>
-  </section>
+  </div>
 </div>
 {% endif %}
 
@@ -70,7 +68,7 @@
   <ul>
     <li>En el mes actual: <strong>{{ total_mes }}</strong></li>
     <li>Últimos 7 días: <strong>{{ total_semana }}</strong></li>
-    <li style="color: #dc2626; font-weight: 600;">Sin asignar: <strong>{{ sin_asignar }}</strong></li>
+    <li class="sin-asignar-text">Sin asignar: <strong>{{ sin_asignar }}</strong></li>
   </ul>
 </section>
 
