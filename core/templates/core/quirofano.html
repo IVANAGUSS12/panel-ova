@@ -1,0 +1,486 @@
+{% extends 'core/base.html' %}
+{% block title %}Gestion Calendario Quirofano - Panel OVA{% endblock %}
+
+{% block extra_head %}
+<style>
+  .agenda-switch {
+    display: inline-flex;
+    gap: .35rem;
+    padding: .35rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, .12);
+    border: 1px solid rgba(148, 163, 184, .18);
+    margin-bottom: 1rem;
+  }
+
+  .agenda-switch a {
+    padding: .6rem .95rem;
+    border-radius: 999px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .agenda-switch a.is-active {
+    background: #fff;
+    color: var(--color-text);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, .08);
+  }
+
+  .quiro-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .quiro-hero {
+    padding: 1.2rem;
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at top left, rgba(14, 165, 233, .18), transparent 35%),
+      linear-gradient(145deg, rgba(15, 23, 42, .96), rgba(30, 41, 59, .94));
+    color: #e2e8f0;
+  }
+
+  .quiro-hero h2,
+  .quiro-hero p {
+    color: inherit;
+  }
+
+  .quiro-primary-btn {
+    width: 100%;
+    border: 0;
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #082f49;
+    background: linear-gradient(135deg, #67e8f9, #a7f3d0);
+    cursor: pointer;
+  }
+
+  .quiro-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: .75rem;
+    margin: 1rem 0;
+  }
+
+  .quiro-summary-card {
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .76);
+    padding: .9rem 1rem;
+  }
+
+  .quiro-summary-card strong {
+    display: block;
+    font-size: 1.45rem;
+    margin-top: .15rem;
+  }
+
+  .quiro-history {
+    display: grid;
+    gap: .7rem;
+  }
+
+  .quiro-history-item {
+    display: block;
+    padding: .85rem .95rem;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, .18);
+    background: rgba(255, 255, 255, .78);
+    color: inherit;
+  }
+
+  .quiro-history-item.is-active {
+    border-color: rgba(14, 116, 144, .45);
+    box-shadow: 0 8px 22px rgba(14, 116, 144, .14);
+  }
+
+  .quiro-filters {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .8rem;
+    margin: 1rem 0 1.25rem;
+  }
+
+  .quiro-calendar {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .quiro-day {
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, .18);
+    background: rgba(255, 255, 255, .8);
+    overflow: hidden;
+  }
+
+  .quiro-day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.1rem;
+    background: linear-gradient(135deg, rgba(14, 165, 233, .08), rgba(34, 197, 94, .08));
+    border-bottom: 1px solid rgba(148, 163, 184, .18);
+  }
+
+  .quiro-day-grid {
+    display: grid;
+    gap: .75rem;
+    padding: 1rem;
+  }
+
+  .quiro-entry {
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, .2);
+    background: #fff;
+    padding: .9rem 1rem;
+  }
+
+  .quiro-entry-top {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    align-items: flex-start;
+    margin-bottom: .55rem;
+  }
+
+  .quiro-entry-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .55rem;
+    color: var(--color-text-secondary);
+    font-size: .94rem;
+  }
+
+  .quiro-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: .25rem .55rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+
+  .quiro-badge.NEW { background: rgba(34, 197, 94, .14); color: #166534; }
+  .quiro-badge.CHANGED { background: rgba(245, 158, 11, .16); color: #92400e; }
+  .quiro-badge.UNCHANGED { background: rgba(148, 163, 184, .16); color: #475569; }
+  .quiro-badge.REMOVED { background: rgba(239, 68, 68, .14); color: #991b1b; }
+  .quiro-badge.BOTH { background: rgba(16, 185, 129, .16); color: #047857; }
+  .quiro-badge.ONLY_QUIROFANO { background: rgba(249, 115, 22, .16); color: #c2410c; }
+  .quiro-badge.ONLY_APP { background: rgba(59, 130, 246, .14); color: #1d4ed8; }
+
+  .quiro-prev {
+    margin-top: .75rem;
+    padding-top: .75rem;
+    border-top: 1px dashed rgba(148, 163, 184, .35);
+    color: var(--color-text-secondary);
+    font-size: .9rem;
+  }
+
+  .quiro-files,
+  .quiro-removed {
+    display: grid;
+    gap: .5rem;
+  }
+
+  .quiro-status-form {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    margin-top: .8rem;
+    flex-wrap: wrap;
+  }
+
+  .quiro-status-form select {
+    max-width: 220px;
+  }
+
+  .quiro-empty {
+    padding: 1.25rem;
+    border-radius: 14px;
+    background: rgba(248, 250, 252, .82);
+    border: 1px dashed rgba(148, 163, 184, .35);
+    color: var(--color-text-secondary);
+  }
+
+  @media (max-width: 1180px) {
+    .quiro-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .quiro-filters,
+    .quiro-summary,
+    .quiro-entry-meta {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .quiro-filters,
+    .quiro-summary,
+    .quiro-entry-meta {
+      grid-template-columns: 1fr;
+    }
+
+    .quiro-entry-top,
+    .quiro-day-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert-success" style="margin-bottom:1rem;">{{ message }}</div>
+  {% endfor %}
+{% endif %}
+
+<div class="agenda-switch">
+  <a href="{% url 'core:calendar' %}">Calendario</a>
+  <a href="{% url 'core:quirofano_view' %}" class="is-active">Gestion calendario-quirofano</a>
+</div>
+
+<section class="quiro-layout">
+  <div>
+    <section class="card quiro-hero">
+      <h2>Gestion Calendario Quirofano</h2>
+      <p class="card-sub">Compara los pacientes del panel contra lo descargado de quirófano y marca si están en ambos, solo en quirófano o solo en la app.</p>
+
+      <form method="post" style="margin-top: 1rem;">
+        {% csrf_token %}
+        <button type="submit" class="quiro-primary-btn">Actualizar quirofano ahora</button>
+      </form>
+
+      <div style="margin-top: 1rem; color: rgba(226, 232, 240, .86); font-size: .92rem;">
+        Ventana automática: {{ default_window.date_from|date:"d/m/Y" }} a {{ default_window.date_to|date:"d/m/Y" }}<br>
+        Se muestran solo filas con origen ADMISION y especialidades habilitadas para el panel.
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Historial diario</h2>
+          <p class="card-sub">Cada importación conserva el estado del día para detectar movimientos de fecha, hora y sede.</p>
+        </div>
+      </div>
+
+      {% if snapshots %}
+        <div class="quiro-history">
+          {% for snapshot in snapshots %}
+            <a href="{% url 'core:quirofano_view' %}?snapshot={{ snapshot.id }}" class="quiro-history-item {% if active_snapshot and snapshot.id == active_snapshot.id %}is-active{% endif %}">
+              <strong>{{ snapshot.imported_at|date:"d/m/Y H:i" }}</strong>
+              <small>{{ snapshot.total_entries }} activas · {{ snapshot.new_count }} nuevas · {{ snapshot.changed_count }} cambiadas · {{ snapshot.removed_count }} quitadas</small>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="quiro-empty">Todavía no hay snapshots. Hacé la primera actualización para traer el quirófano del día.</div>
+      {% endif %}
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Gestion de calendario quirófano</h2>
+          {% if active_snapshot %}
+            <p class="card-sub">Snapshot del {{ active_snapshot.imported_at|date:"d/m/Y H:i" }}. Comparación automática entre panel y quirófano, con corrección manual por fila.</p>
+          {% else %}
+            <p class="card-sub">Todavía no hay datos importados.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if active_snapshot %}
+        <div class="quiro-summary">
+          <div class="quiro-summary-card">En ambos<strong>{{ comparison_summary.both|default:0 }}</strong></div>
+          <div class="quiro-summary-card">Solo quirófano<strong>{{ comparison_summary.only_quirofano|default:0 }}</strong></div>
+          <div class="quiro-summary-card">Solo app<strong>{{ comparison_summary.only_app|default:0 }}</strong></div>
+          <div class="quiro-summary-card">Cambiadas del día<strong>{{ active_snapshot.changed_count }}</strong></div>
+        </div>
+
+        <form method="get" class="quiro-filters">
+          <input type="hidden" name="snapshot" value="{{ active_snapshot.id }}">
+
+          <div class="form-group">
+            <label for="id_date_filter">Fecha</label>
+            <input id="id_date_filter" type="date" name="date" class="form-control" value="{{ current_filters.date }}">
+          </div>
+
+          <div class="form-group">
+            <label for="id_change_filter">Cambio</label>
+            <select id="id_change_filter" name="change" class="form-control">
+              <option value="">Todos</option>
+              <option value="NEW" {% if current_filters.change == 'NEW' %}selected{% endif %}>Nuevos</option>
+              <option value="CHANGED" {% if current_filters.change == 'CHANGED' %}selected{% endif %}>Cambiados</option>
+              <option value="UNCHANGED" {% if current_filters.change == 'UNCHANGED' %}selected{% endif %}>Sin cambios</option>
+              <option value="REMOVED" {% if current_filters.change == 'REMOVED' %}selected{% endif %}>Quitados</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="id_comparison_filter">Comparación</label>
+            <select id="id_comparison_filter" name="comparison" class="form-control">
+              <option value="">Todos</option>
+              <option value="BOTH" {% if current_filters.comparison == 'BOTH' %}selected{% endif %}>En ambos</option>
+              <option value="ONLY_QUIROFANO" {% if current_filters.comparison == 'ONLY_QUIROFANO' %}selected{% endif %}>Solo quirófano</option>
+              <option value="ONLY_APP" {% if current_filters.comparison == 'ONLY_APP' %}selected{% endif %}>Solo app</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="id_sede_filter">Sede</label>
+            <select id="id_sede_filter" name="sede" class="form-control">
+              <option value="">Todas</option>
+              {% for value, label in sede_choices %}
+                <option value="{{ value }}" {% if current_filters.sede == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="id_service_filter">Especialidad</label>
+            <select id="id_service_filter" name="service" class="form-control">
+              <option value="">Todas</option>
+              {% for service in service_choices %}
+                <option value="{{ service }}" {% if current_filters.service == service %}selected{% endif %}>{{ service }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="id_q_filter">Buscar</label>
+            <input id="id_q_filter" type="text" name="q" class="form-control" placeholder="Paciente, DNI, médico..." value="{{ current_filters.q }}">
+          </div>
+
+          <div class="form-group" style="display:flex;align-items:flex-end;gap:.5rem;">
+            <button type="submit" class="btn-primary">Filtrar</button>
+            <a href="{% url 'core:quirofano_view' %}?snapshot={{ active_snapshot.id }}" class="btn-ghost">Limpiar</a>
+          </div>
+        </form>
+
+        {% if active_snapshot_files %}
+          <div class="quiro-files" style="margin-bottom: 1rem;">
+            {% for item in active_snapshot_files %}
+              <div>
+                {% if item.url %}
+                  <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.name }}</a>
+                {% else %}
+                  <span>{{ item.name }}</span>
+                {% endif %}
+                {% if item.sede %}<span class="text-muted"> · {{ item.sede }}</span>{% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if day_groups %}
+          <div class="quiro-calendar">
+            {% for group in day_groups %}
+              <section class="quiro-day">
+                <div class="quiro-day-header">
+                  <div>
+                    <strong>{{ group.date|date:"l d/m/Y" }}</strong>
+                    <div class="text-muted">{{ group.entries|length }} cirugías</div>
+                  </div>
+                </div>
+
+                <div class="quiro-day-grid">
+                  {% for entry in group.entries %}
+                    <article class="quiro-entry">
+                      <div class="quiro-entry-top">
+                        <div>
+                          <strong>{{ entry.patient_name }}</strong>
+                          <div class="text-muted">{{ entry.dni|default:'Sin DNI' }} · {{ entry.sede }}</div>
+                        </div>
+                        <div style="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                          <span class="quiro-badge {{ entry.resolved_comparison_status }}">{{ entry.get_resolved_comparison_status_display }}</span>
+                          <span class="quiro-badge {{ entry.change_type }}">{{ entry.get_change_type_display }}</span>
+                        </div>
+                      </div>
+
+                      <div class="quiro-entry-meta">
+                        <div><strong>Hora</strong><br>{{ entry.surgery_time|time:"H:i"|default:'Sin hora' }}</div>
+                        <div><strong>Obra social</strong><br>{{ entry.coverage|default:'-' }}</div>
+                        <div><strong>Medico</strong><br>{{ entry.doctor|default:'-' }}</div>
+                        <div><strong>Especialidad</strong><br>{{ entry.canonical_service|default:entry.specialty_raw }}</div>
+                        <div><strong>Origen</strong><br>{{ entry.origin }}</div>
+                        <div><strong>Panel OVA</strong><br>{% if entry.app_patient %}<a href="{% url 'core:patient_detail' entry.app_patient.id %}">Ver paciente</a>{% else %}Sin match{% endif %}</div>
+                      </div>
+
+                      <form method="post" action="{% url 'core:quirofano_entry_status_update' entry.id %}" class="quiro-status-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'core:quirofano_view' %}?{{ pagination_qs }}">
+                        <label for="entry_status_{{ entry.id }}"><strong>Estado manual</strong></label>
+                        <select id="entry_status_{{ entry.id }}" name="manual_comparison_status" class="form-control">
+                          <option value="" {% if not entry.manual_comparison_status %}selected{% endif %}>Automatico</option>
+                          <option value="BOTH" {% if entry.manual_comparison_status == 'BOTH' %}selected{% endif %}>En ambos</option>
+                          <option value="ONLY_QUIROFANO" {% if entry.manual_comparison_status == 'ONLY_QUIROFANO' %}selected{% endif %}>Solo quirófano</option>
+                          <option value="ONLY_APP" {% if entry.manual_comparison_status == 'ONLY_APP' %}selected{% endif %}>Solo app</option>
+                        </select>
+                        <button type="submit" class="btn-ghost">Guardar</button>
+                      </form>
+
+                      {% if entry.change_type == 'CHANGED' %}
+                        <div class="quiro-prev">
+                          Antes: {{ entry.previous_surgery_date|date:"d/m/Y" }}
+                          {% if entry.previous_surgery_time %} {{ entry.previous_surgery_time|time:"H:i" }}{% endif %}
+                          · {{ entry.previous_sede|default:'Sin sede' }}
+                          {% if entry.previous_doctor %} · {{ entry.previous_doctor }}{% endif %}
+                        </div>
+                      {% endif %}
+                    </article>
+                  {% endfor %}
+                </div>
+              </section>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="quiro-empty">No hay cirugías activas para los filtros elegidos.</div>
+        {% endif %}
+
+        {% if removed_entries %}
+          <section class="card" style="margin-top: 1rem;">
+            <div class="card-header">
+              <div>
+                <h2>Quitadas desde la corrida anterior</h2>
+                <p class="card-sub">Pacientes que estaban en la importación previa y ya no figuran en el último reporte.</p>
+              </div>
+            </div>
+
+            <div class="quiro-removed">
+              {% for entry in removed_entries %}
+                <div class="quiro-entry">
+                  <div class="quiro-entry-top">
+                    <div>
+                      <strong>{{ entry.patient_name }}</strong>
+                      <div class="text-muted">{{ entry.dni|default:'Sin DNI' }} · {{ entry.sede }}</div>
+                    </div>
+                    <span class="quiro-badge REMOVED">Quitado</span>
+                  </div>
+                  <div class="quiro-entry-meta">
+                    <div><strong>Fecha previa</strong><br>{{ entry.previous_surgery_date|date:"d/m/Y" }}</div>
+                    <div><strong>Hora previa</strong><br>{{ entry.previous_surgery_time|time:"H:i"|default:'Sin hora' }}</div>
+                    <div><strong>Medico previo</strong><br>{{ entry.previous_doctor|default:'-' }}</div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+        {% endif %}
+      {% else %}
+        <div class="quiro-empty">No hay snapshots todavía. La primera actualización va a descargar los tres Excel, consolidarlos y dejar armada la agenda diaria.</div>
+      {% endif %}
+    </section>
+  </div>
+</section>
+{% endblock %}

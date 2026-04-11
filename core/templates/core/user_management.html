@@ -1,0 +1,131 @@
+{% extends 'core/base.html' %}
+{% block title %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <h2>Gestión de Usuarios y Roles</h2>
+    <p class="card-sub">Asignar permisos de staff y superusuario</p>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-success mt-3">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Usuario</th>
+        <th>Nombre</th>
+        <th>Email</th>
+        <th>Staff</th>
+        <th>Superusuario</th>
+        <th>Activo</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+        <tr>
+          <td><strong>{{ user.username }}</strong></td>
+          <td>{{ user.get_full_name|default:"-" }}</td>
+          <td>{{ user.email|default:"-" }}</td>
+          <td>
+            {% if user.is_staff %}
+              <span class="status-badge status-badge-success">✓ Sí</span>
+            {% else %}
+              <span class="status-badge status-badge-secondary">✗ No</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.is_superuser %}
+              <span class="status-badge status-badge-warning">★ Sí</span>
+            {% else %}
+              <span class="status-badge status-badge-secondary">✗ No</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.is_active %}
+              <span class="status-badge status-badge-success">● Activo</span>
+            {% else %}
+              <span class="status-badge status-badge-danger">● Inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.id != request.user.id %}
+              <button onclick="openEditModal({{ user.id }}, '{{ user.username }}', {{ user.is_staff|lower }}, {{ user.is_superuser|lower }}, {{ user.is_active|lower }})" class="btn-ghost btn-small">
+                Editar
+              </button>
+            {% else %}
+              <span class="text-muted">Tu cuenta</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- Modal para editar usuario -->
+<div id="editModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <h3>Editar permisos de <span id="modalUsername"></span></h3>
+    
+    <form method="post" action="{% url 'core:update_user_permissions' %}">
+      {% csrf_token %}
+      <input type="hidden" name="user_id" id="modalUserId">
+      
+      <div class="mt-4">
+        <label class="checkbox-label">
+          <input type="checkbox" name="is_staff" id="modalIsStaff" value="1">
+          <span><strong>Staff</strong> - Puede acceder al panel de administración</span>
+        </label>
+      </div>
+      
+      <div class="mt-4">
+        <label class="checkbox-label">
+          <input type="checkbox" name="is_superuser" id="modalIsSuperuser" value="1">
+          <span><strong>Superusuario</strong> - Tiene todos los permisos</span>
+        </label>
+      </div>
+      
+      <div class="mt-4">
+        <label class="checkbox-label">
+          <input type="checkbox" name="is_active" id="modalIsActive" value="1">
+          <span><strong>Activo</strong> - Puede iniciar sesión</span>
+        </label>
+      </div>
+      
+      <div class="modal-actions">
+        <button type="button" onclick="closeEditModal()" class="btn-secondary">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditModal(userId, username, isStaff, isSuperuser, isActive) {
+  document.getElementById('modalUserId').value = userId;
+  document.getElementById('modalUsername').textContent = username;
+  document.getElementById('modalIsStaff').checked = isStaff;
+  document.getElementById('modalIsSuperuser').checked = isSuperuser;
+  document.getElementById('modalIsActive').checked = isActive;
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+// Cerrar al hacer click fuera
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target.id === 'editModal') {
+    closeEditModal();
+  }
+});
+</script>
+
+{% endblock %}

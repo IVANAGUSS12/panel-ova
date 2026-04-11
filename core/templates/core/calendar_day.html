@@ -2,73 +2,385 @@
 {% load static %}
 
 {% block title %}
-Intervenciones {{ date|date:"d/m/Y" }} - Panel OVA
+Calendario-Quirofano {{ date|date:"d/m/Y" }} - Panel OVA
 {% endblock %}
 
 {% block content %}
 <section class="card">
   <div class="card-header">
-    <h2>Intervenciones del {{ date|date:"d/m/Y" }}</h2>
+    <h2>Gestión del {{ date|date:"d/m/Y" }}</h2>
     <p class="card-sub">
-      Listado de pacientes programados para este día.
+      Comparación entre pacientes del panel y pacientes descargados desde quirófano para este día.
     </p>
   </div>
 
-  {% if patients %}
-    <table class="table">
+  <div class="day-summary-grid">
+    <div class="day-summary-card">Total<strong>{{ day_summary.total }}</strong></div>
+    <div class="day-summary-card">En ambos<strong>{{ day_summary.both }}</strong></div>
+    <div class="day-summary-card">Solo quirófano<strong>{{ day_summary.only_quirofano }}</strong></div>
+    <div class="day-summary-card">Solo app<strong>{{ day_summary.only_app }}</strong></div>
+    <div class="day-summary-card">Nuevos / cambios<strong>{{ day_summary.new }} / {{ day_summary.changed }}</strong></div>
+  </div>
+
+  <form method="get" class="day-filters">
+    <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+    {% if active_snapshot %}<input type="hidden" name="snapshot" value="{{ active_snapshot.id }}">{% endif %}
+    <div class="day-filters-grid">
+      <div class="form-group">
+        <label>Buscar</label>
+        <input type="text" name="q" value="{{ filters.q }}" class="form-control" placeholder="Paciente, DNI, medico o cobertura">
+      </div>
+      <div class="form-group">
+        <label>Comparación</label>
+        <select name="comparison" class="form-control">
+          <option value="">Todas</option>
+          <option value="BOTH" {% if filters.comparison == 'BOTH' %}selected{% endif %}>En ambos</option>
+          <option value="ONLY_QUIROFANO" {% if filters.comparison == 'ONLY_QUIROFANO' %}selected{% endif %}>Solo quirófano</option>
+          <option value="ONLY_APP" {% if filters.comparison == 'ONLY_APP' %}selected{% endif %}>Solo app</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Cambio</label>
+        <select name="change" class="form-control">
+          <option value="">Todos</option>
+          <option value="NEW" {% if filters.change == 'NEW' %}selected{% endif %}>Nuevo</option>
+          <option value="CHANGED" {% if filters.change == 'CHANGED' %}selected{% endif %}>Cambiado</option>
+          <option value="UNCHANGED" {% if filters.change == 'UNCHANGED' %}selected{% endif %}>Sin cambios</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Estado operativo</label>
+        <select name="workflow" class="form-control">
+          <option value="">Todos</option>
+          <option value="PENDIENTE" {% if filters.workflow == 'PENDIENTE' %}selected{% endif %}>Pendiente</option>
+          <option value="SOLICITADO" {% if filters.workflow == 'SOLICITADO' %}selected{% endif %}>Solicitado</option>
+          <option value="AUTORIZADO" {% if filters.workflow == 'AUTORIZADO' %}selected{% endif %}>Autorizado</option>
+          <option value="MATERIAL_PENDIENTE" {% if filters.workflow == 'MATERIAL_PENDIENTE' %}selected{% endif %}>Material pendiente</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Sede</label>
+        <select name="sede" class="form-control">
+          <option value="">Todas</option>
+          {% for sede in filter_options.sedes %}
+            <option value="{{ sede }}" {% if filters.sede == sede %}selected{% endif %}>{{ sede }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Servicio</label>
+        <select name="service" class="form-control">
+          <option value="">Todos</option>
+          {% for service in filter_options.services %}
+            <option value="{{ service }}" {% if filters.service == service %}selected{% endif %}>{{ service }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="day-filter-actions">
+      <button type="submit" class="btn-primary btn-small">Aplicar filtros</button>
+      <a href="{% url 'core:calendar_day' %}?date={{ date|date:'Y-m-d' }}{% if active_snapshot %}&snapshot={{ active_snapshot.id }}{% endif %}" class="btn-secondary btn-small">Limpiar</a>
+    </div>
+  </form>
+
+  {% if entries %}
+    <table class="table table-day-view">
       <thead>
         <tr>
-          <th>Nombre</th>
+          <th style="width: 80px;">Hora</th>
+          <th>Paciente</th>
           <th>Cobertura</th>
           <th>Médico</th>
           <th>Servicio</th>
-          <th>Estado</th>
-          <th>Acciones</th>
+          <th style="width: 120px;">Cambio</th>
+          <th style="width: 140px;">Comparación</th>
+          <th style="width: 160px;">Estado operativo</th>
+          <th style="width: 170px;">Estado manual</th>
+          <th style="width: 260px;">Acciones Agenda</th>
+          <th style="width: 120px;">Paciente panel</th>
         </tr>
       </thead>
       <tbody>
-        {% for p in patients %}
-          <tr>
-            <td>{{ p.full_name }}</td>
-            <td>{{ p.coverage }}</td>
-            <td>{{ p.doctor }}</td>
-            <td>{{ p.service }}</td>
-            <td>
-              {% if p.status == p.STATUS_PENDIENTE %}
-                <span class="badge badge-pendiente">Pendiente</span>
-              {% elif p.status == p.STATUS_SOLICITADO %}
-                <span class="badge badge-solicitado">Solicitado</span>
-              {% elif p.status == p.STATUS_AUTORIZADO %}
-                <span class="badge badge-autorizado">Autorizado</span>
-              {% elif p.status == p.STATUS_MATERIAL_PENDIENTE %}
-                <span class="badge badge-material">Material pendiente</span>
-              {% elif p.status == p.STATUS_RECHAZO %}
-                <span class="badge badge-rechazado">Rechazo</span>
-              {% elif p.status == p.STATUS_REPROGRAMADO %}
-                <span class="badge badge-reprogramado">Reprogramado</span>
+        {% for entry in entries %}
+          <tr class="patient-row row-change-{{ entry.change_type|lower }} row-compare-{{ entry.resolved_comparison_status|lower }}">
+            <td class="cell-time">
+              {% if entry.surgery_time %}
+                <strong class="time-badge">{{ entry.surgery_time|time:"H:i" }}</strong>
               {% else %}
-                <span class="badge">{{ p.get_status_display }}</span>
+                <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+            <td class="cell-patient">
+              <div class="patient-name">{{ entry.patient_name }}</div>
+              <div class="patient-note">{{ entry.dni|default:'Sin DNI' }} · {{ entry.sede|default:'Sin sede' }}</div>
+              {% if entry.change_type == 'CHANGED' %}
+                <div class="patient-note">Antes: {{ entry.previous_surgery_date|date:"d/m/Y" }}{% if entry.previous_surgery_time %} {{ entry.previous_surgery_time|time:"H:i" }}{% endif %}</div>
+              {% endif %}
+            </td>
+            <td>{{ entry.coverage }}</td>
+            <td>{{ entry.doctor }}</td>
+            <td>{{ entry.canonical_service|default:entry.specialty_raw }}</td>
+            <td>
+              <span class="badge badge-change badge-change-{{ entry.change_type|lower }}">{{ entry.get_change_type_display }}</span>
+            </td>
+            <td>
+              <span class="badge badge-compare badge-compare-{{ entry.resolved_comparison_status|lower }}">{{ entry.get_resolved_comparison_status_display }}</span>
+            </td>
+            <td>
+              {% if entry.resolved_comparison_status == 'ONLY_QUIROFANO' and entry.change_type != 'REMOVED' %}
+                <form method="post" action="{% url 'core:quirofano_entry_workflow_update' entry.id %}" class="inline-status-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ current_path }}">
+                  <select name="manual_workflow_status" class="form-control form-control-sm">
+                    <option value="PENDIENTE" {% if entry.manual_workflow_status == 'PENDIENTE' or not entry.manual_workflow_status %}selected{% endif %}>Pendiente</option>
+                    <option value="SOLICITADO" {% if entry.manual_workflow_status == 'SOLICITADO' %}selected{% endif %}>Solicitado</option>
+                    <option value="AUTORIZADO" {% if entry.manual_workflow_status == 'AUTORIZADO' %}selected{% endif %}>Autorizado</option>
+                    <option value="MATERIAL_PENDIENTE" {% if entry.manual_workflow_status == 'MATERIAL_PENDIENTE' %}selected{% endif %}>Material pendiente</option>
+                  </select>
+                  <button type="submit" class="btn-secondary btn-small">Guardar</button>
+                </form>
+              {% elif entry.app_patient %}
+                <span class="badge badge-workflow">{{ entry.app_patient.get_status_display }}</span>
+              {% else %}
+                <span class="text-muted">-</span>
               {% endif %}
             </td>
             <td>
-              <a href="{% url 'core:patient_detail' p.id %}" class="btn-primary btn-small">
-                Ver
-              </a>
+              <form method="post" action="{% url 'core:quirofano_entry_status_update' entry.id %}" class="inline-status-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ current_path }}">
+                <select name="manual_comparison_status" class="form-control form-control-sm">
+                  <option value="" {% if not entry.manual_comparison_status %}selected{% endif %}>Automático</option>
+                  <option value="BOTH" {% if entry.manual_comparison_status == 'BOTH' %}selected{% endif %}>En ambos</option>
+                  <option value="ONLY_QUIROFANO" {% if entry.manual_comparison_status == 'ONLY_QUIROFANO' %}selected{% endif %}>Solo quirófano</option>
+                  <option value="ONLY_APP" {% if entry.manual_comparison_status == 'ONLY_APP' %}selected{% endif %}>Solo app</option>
+                </select>
+                <button type="submit" class="btn-secondary btn-small">Guardar</button>
+              </form>
+            </td>
+            <td>
+              {% if entry.can_create_patient %}
+                <div class="agenda-actions-stack">
+                  <form method="post" action="{% url 'core:quirofano_entry_create_patient' entry.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ current_path }}">
+                    <button type="submit" class="btn-primary btn-small">Crear en panel</button>
+                  </form>
+                  {% if entry.link_candidates %}
+                    <form method="post" action="{% url 'core:quirofano_entry_link_patient' entry.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="next" value="{{ current_path }}">
+                      <select name="patient_id" class="form-control form-control-sm">
+                        <option value="">Vincular con...</option>
+                        {% for candidate in entry.link_candidates %}
+                          <option value="{{ candidate.id }}">{{ candidate.full_name }} · {{ candidate.planned_date|date:"d/m" }} · {{ candidate.dni }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="btn-secondary btn-small">Vincular</button>
+                    </form>
+                  {% else %}
+                    <span class="text-muted text-note">Sin sugerencias de vínculo.</span>
+                  {% endif %}
+                </div>
+              {% else %}
+                <span class="text-muted">Sin acción directa</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if entry.app_patient %}
+                <a href="{% url 'core:patient_detail' entry.app_patient.id %}" class="btn-primary btn-small">Ver detalle</a>
+              {% else %}
+                <span class="text-muted">Sin match</span>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   {% else %}
-    <p style="font-size:0.9rem; color:#6b7280; margin-top:0.5rem;">
-      No hay intervenciones programadas para este día.
+    <p class="text-secondary text-note">
+      No hay registros comparados para este día.
     </p>
   {% endif %}
 
-  <div class="form-actions" style="margin-top:1rem;">
-    <a href="{% url 'core:calendar' %}" class="btn-secondary btn-small">
+  <div class="form-actions mt-3">
+    <a href="{% url 'core:calendar' %}{% if active_snapshot %}?snapshot={{ active_snapshot.id }}{% endif %}" class="btn-secondary btn-small">
       ← Volver al calendario
     </a>
   </div>
 </section>
+
+<style>
+.day-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+
+.day-summary-card {
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 12px;
+  padding: .8rem .9rem;
+}
+
+.day-summary-card strong {
+  display: block;
+  margin-top: .2rem;
+  font-size: 1.3rem;
+}
+
+.day-filters {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .2);
+}
+
+.day-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: .75rem;
+}
+
+.day-filter-actions {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  margin-top: .85rem;
+  flex-wrap: wrap;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+
+.table-day-view {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.patient-row {
+  transition: all 0.2s;
+}
+
+.patient-row:hover {
+  background: #f8f9fa;
+  transform: scale(1.005);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.row-change-removed {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.row-change-removed .patient-name {
+  text-decoration: line-through;
+}
+
+.cell-time {
+  font-weight: 600;
+}
+
+.time-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.cell-patient {
+  max-width: 300px;
+}
+
+.patient-name {
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 4px;
+}
+
+.patient-note {
+  font-size: 0.8rem;
+  color: #6c757d;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+}
+
+.patient-note-danger {
+  color: #b91c1c;
+  font-style: normal;
+}
+
+.badge-change-new {
+  background: rgba(34, 197, 94, .14);
+  color: #15803d;
+}
+
+.badge-change-changed {
+  background: rgba(245, 158, 11, .16);
+  color: #b45309;
+}
+
+.badge-change-unchanged {
+  background: rgba(100, 116, 139, .12);
+  color: #475569;
+}
+
+.badge-change-removed {
+  background: rgba(148, 163, 184, .18);
+  color: #475569;
+}
+
+.badge-compare-both {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
+.badge-compare-only_quirofano {
+  background: rgba(249, 115, 22, 0.14);
+  color: #c2410c;
+}
+
+.badge-compare-only_app {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+}
+
+.badge-workflow {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+
+.inline-status-form {
+  display: flex;
+  gap: .4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.agenda-actions-stack {
+  display: grid;
+  gap: .45rem;
+}
+
+.form-control-sm {
+  min-width: 150px;
+}
+
+@media (max-width: 1100px) {
+  .day-summary-grid,
+  .day-filters-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+</style>
 {% endblock %}

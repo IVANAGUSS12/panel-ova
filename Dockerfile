@@ -16,5 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
 ENV DJANGO_SETTINGS_MODULE=panel_ova.settings
+ENV PORT=5000
 
-CMD ["gunicorn", "panel_ova.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["sh", "-c", "gunicorn panel_ova.wsgi:application --bind 0.0.0.0:${PORT:-5000}"]

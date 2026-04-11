@@ -9,12 +9,12 @@
     <div>
       <h2>Estadísticas</h2>
       <p class="card-sub">
-        Reporte entre fechas (por carga) con comparativa por períodos de 7 días y detalle por especialidad (servicio).
+        Reporte entre fechas por fecha de cirugía o fecha de pedido, con comparativa por períodos y estado de autorización.
       </p>
     </div>
     <div class="header-actions">
-      <a href="{% url 'core:export_excel' %}" class="btn-secondary">Exportar Excel</a>
-      <a href="{% url 'core:export_pdf' %}" class="btn-secondary">Exportar PDF</a>
+      <a href="{% url 'core:export_excel' %}" class="btn-secondary" id="exportExcelBtn">Exportar Excel</a>
+      <a href="{% url 'core:export_pdf' %}" class="btn-secondary" id="exportPdfBtn">Exportar PDF</a>
     </div>
   </div>
 
@@ -27,6 +27,25 @@
     <div class="form-group">
       <label for="stats_to">Hasta</label>
       <input id="stats_to" type="text" class="form-control" placeholder="dd/mm/aaaa">
+    </div>
+    <div class="form-group">
+      <label for="date_field">Base de fecha</label>
+      <select id="date_field" class="form-control">
+        <option value="planned_date" selected>Fecha de cirugía</option>
+        <option value="created_at">Fecha de pedido</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="filter_service">Servicio</label>
+      <select id="filter_service" class="form-control">
+        <option value="">Todos los servicios</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="filter_doctor">Profesional</label>
+      <select id="filter_doctor" class="form-control">
+        <option value="">Todos los profesionales</option>
+      </select>
     </div>
     <div class="form-group">
       <label>&nbsp;</label>
@@ -42,21 +61,37 @@
       <div class="kpi-value" id="kpiPeriod">-</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Total solicitudes</div>
+      <div class="kpi-label">Total (base elegida)</div>
       <div class="kpi-value" id="kpiTotal">-</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Autorizadas</div>
+      <div class="kpi-label">Total por fecha pedido</div>
+      <div class="kpi-value" id="kpiTotalPedido">-</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total por fecha cirugía</div>
+      <div class="kpi-value" id="kpiTotalCirugia">-</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Autorizado en rango</div>
       <div class="kpi-value" id="kpiAutorizadas">-</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Pendientes</div>
-      <div class="kpi-value" id="kpiPendientes">-</div>
+      <div class="kpi-label">No autorizado en rango</div>
+      <div class="kpi-value" id="kpiNoAutorizadas">-</div>
     </div>
   </div>
 
   <!-- GRAFICAS -->
   <div class="stats-grid">
+    <div class="stats-chart">
+      <h3>Comparativa: Pedidos vs Realizados</h3>
+      <p style="font-size: 13px; color: #666; margin: -8px 0 12px 0;">
+        Pedidos en el período (fecha creación) vs Cirugías realizadas (fecha cirugía)
+      </p>
+      <canvas id="chartDualComparison"></canvas>
+    </div>
+
     <div class="stats-chart">
       <h3>Estados (total)</h3>
       <canvas id="chartStatus"></canvas>
@@ -73,17 +108,65 @@
     </div>
 
     <div class="stats-chart">
+      <h3 id="chartDoctorTitle">Por profesional</h3>
+      <canvas id="chartDoctor"></canvas>
+    </div>
+
+    <div class="stats-chart">
       <h3>Por cobertura</h3>
       <canvas id="chartCoverage"></canvas>
     </div>
   </div>
 
+  <!-- Gráficos de evolución temporal -->
   <div class="stats-grid">
-    <div class="stats-chart" style="grid-column: 1 / -1;">
+    <div class="stats-chart is-full">
+      <h3>Evolución temporal: Pedidos vs Cirugías realizadas</h3>
+      <p style="font-size: 13px; color: #666; margin: -8px 0 12px 0;">
+        Evolución diaria de pedidos (fecha creación) y cirugías (fecha intervención)
+      </p>
+      <canvas id="chartTimeline"></canvas>
+    </div>
+
+    <div class="stats-chart">
+      <h3>Pedidos cargados por período</h3>
+      <p style="font-size: 13px; color: #666; margin: -8px 0 12px 0;">
+        Cantidad de pacientes cargados (fecha de creación)
+      </p>
+      <canvas id="chartPeriodCreated"></canvas>
+    </div>
+
+    <div class="stats-chart">
+      <h3>Cirugías realizadas por período</h3>
+      <p style="font-size: 13px; color: #666; margin: -8px 0 12px 0;">
+        Cantidad de cirugías (fecha de intervención)
+      </p>
+      <canvas id="chartPeriodPlanned"></canvas>
+    </div>
+
+    <div class="stats-chart">
+      <h3>Autorizadas por período</h3>
+      <p style="font-size: 13px; color: #666; margin: -8px 0 12px 0;">
+        Cirugías autorizadas en cada período
+      </p>
+      <canvas id="chartPeriodAuthorized"></canvas>
+    </div>
+
+    <div class="stats-chart">
+      <h3>Tasa de autorización por período</h3>
+      <p style="font-size: 13px; color: #666; margin: -8px 0 12px 0;">
+        % de autorizadas sobre el total de cirugías
+      </p>
+      <canvas id="chartAuthorizationRate"></canvas>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stats-chart is-full">
       <div class="stats-chart-header">
         <h3>Estados por especialidad (servicio)</h3>
-        <div class="form-group" style="min-width: 320px;">
-          <label for="service_detail" style="display:none;">Servicio</label>
+        <div class="form-group stats-min-width">
+          <label for="service_detail" class="sr-only">Servicio</label>
           <select id="service_detail" class="form-control">
             <option value="">Seleccioná un servicio...</option>
           </select>
@@ -95,7 +178,7 @@
           <canvas id="chartServiceStacked"></canvas>
         </div>
         <div class="stats-split-item">
-          <h4 style="margin: 0 0 10px 0;">Detalle del servicio</h4>
+          <h4 class="h4-tight">Detalle del servicio</h4>
           <canvas id="chartServiceDetail"></canvas>
         </div>
       </div>

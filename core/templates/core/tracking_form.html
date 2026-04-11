@@ -8,10 +8,10 @@
         <p class="card-sub">Ingrese su código OVA para ver el estado.</p>
     </div>
 
-    <form method="get" class="form-group" style="max-width:400px;">
+    <form method="get" class="inline-form">
         <label>Código de seguimiento</label>
         <input type="text" name="id" class="form-control" placeholder="Ej: OVA1764161228" value="{{ tracking_id }}">
-        <button type="submit" class="btn-primary mt-2">Consultar</button>
+        <button type="submit" class="btn-primary">Consultar</button>
     </form>
 
     {% if tracking_id and not patient %}

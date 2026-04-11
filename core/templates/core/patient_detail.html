@@ -16,36 +16,229 @@
       <span class="detail-id">· {{ patient.tracking_id }}</span>
     </h2>
     <p class="detail-meta">
-      DNI: {{ patient.dni }} · Cobertura: {{ patient.coverage }}
+      DNI: {{ patient.dni }} · Cobertura: {{ patient.coverage }} 
+      {% if patient.sede %} · Sede: {{ patient.get_sede_display }}{% endif %}
+      {% if patient.surgery_time %} · Hora: {{ patient.surgery_time|time:"H:i" }}hs{% endif %}
     </p>
   </div>
 
+  {% if user.is_staff %}
+  <!-- Formulario de edición de datos (solo staff) - Colapsable -->
+  <div class="card-section edit-form-collapsible">
+    <button type="button" class="edit-form-toggle" onclick="toggleEditForm()">
+      <span class="toggle-icon">▼</span>
+      <span class="toggle-text">✏️ Editar datos del paciente</span>
+    </button>
+    
+    <div class="edit-form-content" id="editFormContent" style="display: none;">
+      <form method="post" class="detail-edit-form">
+        {% csrf_token %}
+        <input type="hidden" name="update_patient_data" value="1">
+        <input type="hidden" name="next" value="{{ back_url }}">
+
+        <div class="edit-section">
+          <h4 class="edit-section-title">Datos de la cirugía</h4>
+          <div class="form-row">
+            <div class="form-group no-margin">
+              <label for="id_coverage_edit">Cobertura</label>
+              <input type="text" name="coverage" id="id_coverage_edit" value="{{ patient.coverage }}" list="coverage_list" class="form-control">
+              <datalist id="coverage_list">
+                {% for cov in coverages %}
+                  <option value="{{ cov }}"></option>
+                {% endfor %}
+              </datalist>
+            </div>
+
+            <div class="form-group no-margin">
+              <label for="id_sede_edit">Sede</label>
+              <select name="sede" id="id_sede_edit" class="form-control">
+                {% for value, label in patient.SEDE_CHOICES %}
+                  <option value="{{ value }}" {% if value == patient.sede %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="form-group no-margin">
+              <label for="id_surgery_time_edit">Hora de cirugía</label>
+              <input type="time" name="surgery_time" id="id_surgery_time_edit" value="{% if patient.surgery_time %}{{ patient.surgery_time|time:'H:i' }}{% endif %}" class="form-control">
+            </div>
+          </div>
+        </div>
+
+        <div class="edit-section">
+          <h4 class="edit-section-title">Estado del día</h4>
+          <div class="form-row">
+            <div class="form-group no-margin">
+              <label for="id_material_status_edit">Estado de material</label>
+              <select name="material_status" id="id_material_status_edit" class="form-control">
+                {% for value, label in patient.MATERIAL_CHOICES %}
+                  <option value="{{ value }}" {% if value == patient.material_status %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="form-group no-margin checkbox-group">
+              <label for="id_en_quirofano_edit" class="checkbox-label">
+                <input type="checkbox" name="en_quirofano" id="id_en_quirofano_edit" {% if patient.en_quirofano %}checked{% endif %}>
+                <span>En quirófano</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group no-margin">
+            <label for="id_observaciones_calendario_edit">Observaciones del calendario</label>
+            <textarea name="observaciones_calendario" id="id_observaciones_calendario_edit" rows="3" class="form-control" placeholder="Observaciones específicas para este día...">{{ patient.observaciones_calendario|default_if_none:"" }}</textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Guardar cambios</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="detail-grid">
     <div class="detail-column">
-      <h3 class="section-title">Datos del paciente</h3>
-      <p><strong>Usuario asignado:</strong> {{ patient.assigned_to.username|default:"-" }}</p>
-      <p><strong>Médico:</strong> {{ patient.doctor }}</p>
-      <p><strong>Servicio:</strong> {{ patient.service }}</p>
-      <p><strong>Fecha probable intervención:</strong> {{ patient.planned_date|date:"d/m/Y" }}</p>
-      <p><strong>Email:</strong> {{ patient.email|default:"-" }}</p>
-      <p><strong>Celular / WhatsApp:</strong> {{ patient.phone|default:"-" }}</p>
-      <p><strong>Observaciones externas:</strong> {{ patient.external_observations|default:"-" }}</p>
+      <!-- Card: Datos del paciente -->
+      <div class="info-section-card">
+        <h3 class="section-title">👤 Datos del paciente</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">Médico</span>
+            <span class="info-value">{{ patient.doctor }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Servicio</span>
+            <span class="info-value">{{ patient.service }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Fecha probable intervención</span>
+            <span class="info-value">{{ patient.planned_date|date:"d/m/Y" }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Sede</span>
+            <span class="info-value">{% if patient.sede %}{{ patient.get_sede_display }}{% else %}-{% endif %}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Hora de cirugía</span>
+            <span class="info-value">{% if patient.surgery_time %}{{ patient.surgery_time|time:"H:i" }}hs{% else %}-{% endif %}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Email</span>
+            <span class="info-value">{{ patient.email|default:"-" }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Celular / WhatsApp</span>
+            <span class="info-value">{{ patient.phone|default:"-" }}</span>
+          </div>
+          <div class="info-item full-width">
+            <span class="info-label">Observaciones externas</span>
+            <span class="info-value">{{ patient.external_observations|default:"-" }}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Card: Estado del día -->
+      <div class="info-section-card">
+        <h3 class="section-title">📋 Estado del día</h3>
+        <div class="info-cards">
+          <div class="info-card">
+            <div class="info-card-icon">💊</div>
+            <div class="info-card-content">
+              <div class="info-card-label">Material</div>
+              <div class="info-card-value">
+                {% if patient.material_status == 'PENDIENTE' %}
+                  <span class="badge badge-material-pendiente">Pendiente</span>
+                {% elif patient.material_status == 'AUTORIZADO' %}
+                  <span class="badge badge-material-autorizado">Autorizado</span>
+                {% elif patient.material_status == 'RECHAZADO' %}
+                  <span class="badge badge-material-rechazado">Rechazado por profesional</span>
+                {% else %}
+                  <span class="badge">-</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          
+          <div class="info-card">
+            <div class="info-card-icon">🏥</div>
+            <div class="info-card-content">
+              <div class="info-card-label">En quirófano</div>
+              <div class="info-card-value">
+                {% if patient.en_quirofano %}
+                  <span class="status-indicator status-active">✓ Sí</span>
+                {% else %}
+                  <span class="status-indicator status-inactive">✗ No</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {% if patient.observaciones_calendario %}
+        <div class="observaciones-box">
+          <div class="observaciones-header">📝 Observaciones del calendario</div>
+          <div class="observaciones-content">{{ patient.observaciones_calendario }}</div>
+        </div>
+        {% endif %}
+      </div>
 
-      <h3 class="section-title">Estado y observaciones internas</h3>
-      <p class="detail-current-status">
-        <span>Estado actual:</span>
-        {% if patient.status == 'AUTORIZADO' %}
-          <span class="badge badge-autorizado">{{ patient.get_status_display }}</span>
-        {% elif patient.status == 'PENDIENTE' %}
-          <span class="badge badge-pendiente">{{ patient.get_status_display }}</span>
-        {% elif patient.status == 'SOLICITADO' %}
-          <span class="badge badge-solicitado">{{ patient.get_status_display }}</span>
-        {% elif patient.status == 'MATERIAL_PENDIENTE' %}
-          <span class="badge badge-material">{{ patient.get_status_display }}</span>
+      <!-- Card: Asignación -->
+      <div class="info-section-card">
+        <h3 class="section-title">👥 Asignación</h3>
+        <p class="detail-current-status">
+          <span>Asignado a:</span>
+          {% if patient.assigned_to %}
+            <span class="badge badge-info">{{ patient.assigned_to.get_full_name|default:patient.assigned_to.username }}</span>
+          {% else %}
+            <span class="badge">Sin asignar</span>
+          {% endif %}
+        </p>
+
+        <form method="post" class="detail-form">
+          {% csrf_token %}
+          <input type="hidden" name="assign_user" value="1">
+          <input type="hidden" name="next" value="{{ back_url }}">
+
+          <div class="form-group">
+            <label for="id_assigned_to">Asignar a usuario</label>
+            <select name="assigned_to" id="id_assigned_to" class="form-control">
+              <option value="">Sin asignar</option>
+              {% for u in users %}
+                <option value="{{ u.id }}" {% if patient.assigned_to and patient.assigned_to.id == u.id %}selected{% endif %}>
+                  {{ u.get_full_name|default:u.username }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Actualizar asignación</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Card: Estado y observaciones internas -->
+      <div class="info-section-card">
+        <h3 class="section-title">📝 Estado y observaciones internas</h3>
+        <p class="detail-current-status">
+          <span>Estado actual:</span>
+          {% if patient.status == 'AUTORIZADO' %}
+            <span class="badge badge-autorizado">{{ patient.get_status_display }}</span>
+          {% elif patient.status == 'PENDIENTE' %}
+            <span class="badge badge-pendiente">{{ patient.get_status_display }}</span>
+          {% elif patient.status == 'SOLICITADO' %}
+            <span class="badge badge-solicitado">{{ patient.get_status_display }}</span>
+          {% elif patient.status == 'MATERIAL_PENDIENTE' %}
+            <span class="badge badge-material">{{ patient.get_status_display }}</span>
+          {% elif patient.status == 'PRESUPUESTO_SI' %}
+            <span class="badge badge-presupuesto">{{ patient.get_status_display }}</span>
         {% elif patient.status == 'RECHAZO' %}
           <span class="badge badge-rechazado">{{ patient.get_status_display }}</span>
         {% elif patient.status == 'REPROGRAMADO' %}
           <span class="badge badge-reprogramado">{{ patient.get_status_display }}</span>
+        {% elif patient.status == 'REALIZADO' %}
+          <span class="badge badge-success">{{ patient.get_status_display }}</span>
         {% else %}
           <span class="badge">{{ patient.get_status_display }}</span>
         {% endif %}
@@ -68,18 +261,6 @@
         </div>
 
         <div class="form-group">
-          <label for="id_assigned_to">Usuario asignado</label>
-          <select name="assigned_to" id="id_assigned_to" class="form-control">
-            <option value="">-- Sin asignar --</option>
-            {% for user in users %}
-              <option value="{{ user.pk }}" {% if patient.assigned_to.pk == user.pk %}selected{% endif %}>
-                {{ user.username }}{% if user.first_name or user.last_name %} ({{ user.get_full_name }}){% endif %}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="form-group">
           <label for="id_internal_observations">Observaciones internas</label>
           <textarea
             name="internal_observations"
@@ -94,20 +275,114 @@
           <button type="submit" class="btn-primary">Guardar</button>
         </div>
       </form>
+
+      <!-- Botón para enviar WhatsApp con autorización -->
+      {% if patient.status == 'AUTORIZADO' and patient.phone %}
+        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid var(--color-border);">
+          <h4 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600; color: var(--color-text);">
+            📲 Notificar al paciente
+          </h4>
+          <button 
+            onclick="enviarWhatsAppAutorizacion()"
+            class="btn-primary"
+            style="background: var(--color-success); width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+            </svg>
+            Enviar autorización por WhatsApp
+          </button>
+          <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: var(--color-text-secondary); text-align: center;">
+            Tel: {{ patient.phone }} - Se abrirá WhatsApp Web con el mensaje prellenado
+          </p>
+        </div>
+      {% endif %}
+
+      <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid var(--color-border);">
+        <h4 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600; color: var(--color-text);">
+          ✉️ Enviar a admisión
+        </h4>
+
+        {% if admission_recipient %}
+          <form method="post" class="detail-form" onsubmit="return confirm('¿Enviar orden, materiales y autorización a ' + '{{ admission_recipient|escapejs }}' + '?');">
+            {% csrf_token %}
+            <input type="hidden" name="send_admission_email" value="1">
+            <input type="hidden" name="next" value="{{ back_url }}">
+
+            <button
+              type="submit"
+              class="btn-primary"
+              style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;{% if admission_missing_labels %} opacity: 0.6; cursor: not-allowed;{% endif %}"
+              {% if admission_missing_labels %}disabled title="Faltan adjuntos obligatorios"{% endif %}>
+              Enviar documentación por mail
+            </button>
+          </form>
+
+          <p style="margin: 0.75rem 0 0 0; font-size: 0.85rem; color: var(--color-text-secondary);">
+            Destino: {{ admission_recipient }}
+          </p>
+
+          {% if admission_missing_labels %}
+            <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #b91c1c;">
+              Faltan adjuntos obligatorios: {{ admission_missing_labels|join:', ' }}.
+            </p>
+          {% else %}
+            <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: var(--color-text-secondary);">
+              Se adjuntarán: {{ admission_attachment_names|join:', ' }}.
+            </p>
+          {% endif %}
+        {% else %}
+          <p style="margin: 0; font-size: 0.85rem; color: #b45309;">
+            Definí la sede del paciente para habilitar el envío automático a admisión.
+          </p>
+        {% endif %}
+      </div>
+      </div>
     </div>
 
     <div class="detail-column">
-      <h3 class="section-title">Adjuntos</h3>
+      <!-- Card: Adjuntos -->
+      <div class="info-section-card">
+        <h3 class="section-title">📎 Adjuntos</h3>
       <ul class="attachments-list">
         {% for a in patient.attachments.all %}
           <li>
             <div class="attachment-main">
-              <span class="attachment-label">{{ a.get_type_display }}</span>
-              <span class="attachment-meta">{{ a.uploaded_at|date:"d/m/Y H:i" }}</span>
+              <div class="attachment-info">
+                <div class="attachment-filename">
+                  <strong style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">{{ a.display_name|truncatechars:80 }}</strong>
+                  <span class="attachment-size">{{ a.file.size|filesizeformat }}</span>
+                </div>
+                {% if user.is_staff %}
+                  <!-- Selector de tipo para staff -->
+                  <form method="post" class="attachment-type-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="update_attachment_type" value="1">
+                    <input type="hidden" name="attachment_id" value="{{ a.id }}">
+                    <input type="hidden" name="next" value="{{ back_url }}">
+                    <select name="new_type" onchange="this.form.submit()" class="form-control">
+                      {% for value, label in a.TYPE_CHOICES %}
+                        <option value="{{ value }}" {% if value == a.type %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                {% else %}
+                  <span class="attachment-label">{{ a.get_type_display }}</span>
+                {% endif %}
+                <span class="attachment-meta">{{ a.uploaded_at|date:"d/m/Y H:i" }}</span>
+              </div>
             </div>
-            <div class="attachment-actions">
-              <a href="{{ a.file.url }}" target="_blank" class="btn-secondary btn-small">👁 Ver</a>
-              <a href="{{ a.file.url }}" download class="btn-primary btn-small">⭳ Descargar</a>
+              <div class="attachment-actions">
+              <button onclick="viewFile('{{ a.file.url }}', '{{ a.display_name|escapejs }}', '{{ forloop.counter0 }}')" class="btn-secondary btn-small">👁 Ver</button>
+              <a href="{{ a.file.url }}" download class="btn-primary btn-small" rel="noopener">⬇ Descargar</a>
+              {% if user.is_staff %}
+                <form method="post" onsubmit="return confirm('¿Eliminar este archivo?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="delete_attachment" value="1">
+                  <input type="hidden" name="attachment_id" value="{{ a.id }}">
+                  <input type="hidden" name="next" value="{{ back_url }}">
+                  <button type="submit" class="btn-secondary btn-small attachment-delete">🗑 Eliminar</button>
+                </form>
+              {% endif %}
             </div>
           </li>
         {% empty %}
@@ -133,10 +408,21 @@
           <button type="submit" class="btn-secondary">Agregar archivo</button>
         </div>
       </form>
+      </div>
 
-      <h3 class="section-title">Reprogramación</h3>
-      <p><strong>Última reprogramación:</strong> {{ patient.last_reprogram_date|default:"-" }}</p>
-      <p><strong>Motivo:</strong> {{ patient.last_reprogram_reason|default:"-" }}</p>
+      <!-- Card: Reprogramación -->
+      <div class="info-section-card">
+        <h3 class="section-title">🔄 Reprogramación</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">Última reprogramación</span>
+            <span class="info-value">{{ patient.last_reprogram_date|default:"-" }}</span>
+          </div>
+          <div class="info-item full-width">
+            <span class="info-label">Motivo</span>
+            <span class="info-value">{{ patient.last_reprogram_reason|default:"-" }}</span>
+          </div>
+        </div>
 
       <form method="post" class="detail-form">
         {% csrf_token %}
@@ -149,33 +435,708 @@
           <button type="submit" class="btn-secondary">Reprogramar</button>
         </div>
       </form>
-
-      <h3 class="section-title">Historial de cambios</h3>
-      <ul class="attachments-list">
-        {% for h in patient.history.all|slice:":10" %}
-          <li>
-            <div class="attachment-main">
-              <span class="attachment-label">{{ h.get_action_display }}</span>
-              <span class="attachment-meta">
-                {{ h.created_at|date:"d/m/Y H:i" }} - {{ h.user.username|default:"Sistema" }}
-              </span>
-            </div>
-            {% if h.old_value or h.new_value %}
-              <div class="history-detail">
-                {% if h.old_value %}{{ h.old_value }} →{% endif %} {{ h.new_value }}
-              </div>
-            {% endif %}
-            {% if h.notes %}
-              <div class="history-detail notes">
-                {{ h.notes }}
-              </div>
-            {% endif %}
-          </li>
-        {% empty %}
-          <li>Sin historial de cambios.</li>
-        {% endfor %}
-      </ul>
+      </div>
     </div>
   </div>
+
+  <!-- Sección de Historial de Cambios -->
+  <div class="detail-history history-divider">
+    <h3 class="section-title">📋 Historial de cambios</h3>
+    
+    {% if history %}
+      <div class="history-timeline">
+        {% for change in history %}
+          <div class="history-item">
+            <div class="history-icon">
+              {% if change.action == 'CREATE' %}
+                <span class="icon-create">+</span>
+              {% elif change.action == 'UPDATE' %}
+                <span class="icon-update">✏️</span>
+              {% else %}
+                <span class="icon-delete">🗑️</span>
+              {% endif %}
+            </div>
+            <div class="history-content">
+              <div class="history-header">
+                <span class="history-field">{{ change.field_name }}</span>
+                <span class="history-meta">
+                  {{ change.timestamp|date:"d/m/Y H:i" }} · 
+                  {% if change.user %}
+                    {{ change.user.get_full_name|default:change.user.username }}
+                  {% else %}
+                    Sistema
+                  {% endif %}
+                </span>
+              </div>
+              {% if change.action == 'UPDATE' and change.old_value and change.new_value %}
+                <div class="history-change">
+                  <span class="old-value">{{ change.old_value }}</span>
+                  <span class="arrow">→</span>
+                  <span class="new-value">{{ change.new_value }}</span>
+                </div>
+              {% else %}
+                <div class="history-description">{{ change.new_value }}</div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-state">No hay historial de cambios registrado.</p>
+    {% endif %}
+  </div>
+
 </section>
+
+<!-- Visor de Archivos Mejorado -->
+<div id="fileViewerModal" class="file-viewer-modal">
+  <div class="file-viewer-overlay" onclick="closeFileViewer()"></div>
+  <div class="file-viewer-container">
+    <!-- Header con controles -->
+    <div class="file-viewer-header">
+      <div class="file-viewer-title">
+        <strong id="viewerFileName">Archivo</strong>
+        <span id="viewerFileIndex" class="viewer-file-index"></span>
+      </div>
+      <div class="file-viewer-controls">
+        <button onclick="rotateFile(-90)" id="btnRotateLeft" class="btn-viewer" title="Rotar izquierda">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9v6m-6-3l3 3 3-3"/>
+          </svg>
+        </button>
+        <button onclick="rotateFile(90)" id="btnRotateRight" class="btn-viewer" title="Rotar derecha">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-9-9v6m6-3l-3 3-3-3"/>
+          </svg>
+        </button>
+        <button onclick="zoomFile(-0.2)" id="btnZoomOut" class="btn-viewer" title="Alejar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M8 11h6"/>
+          </svg>
+        </button>
+        <button onclick="zoomFile(0.2)" id="btnZoomIn" class="btn-viewer" title="Acercar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M11 8v6m-3-3h6"/>
+          </svg>
+        </button>
+        <button onclick="resetView()" id="btnReset" class="btn-viewer" title="Restablecer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
+          </svg>
+        </button>
+        <div class="viewer-divider"></div>
+        <button onclick="openPDFInNewTab()" id="btnOpenPDF" class="btn-viewer" style="display: none;" title="Abrir PDF en pestaña">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          <span style="margin-left: 4px;">Abrir en pestaña</span>
+        </button>
+        <button onclick="openPDFWithGoogle()" id="btnGoogleViewer" class="btn-viewer" style="display: none;" title="Abrir con Google Docs Viewer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
+            <path d="M17 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3"/>
+          </svg>
+          <span style="margin-left: 4px;">Google Viewer</span>
+        </button>
+        <button onclick="downloadCurrentFile()" class="btn-viewer btn-viewer-primary" title="Descargar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Descargar
+        </button>
+        <button onclick="printCurrentFile()" class="btn-viewer" title="Imprimir">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+          </svg>
+        </button>
+        <button onclick="closeFileViewer()" class="btn-viewer btn-viewer-close" title="Cerrar (Esc)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    
+    <!-- Contenedor del archivo -->
+    <div class="file-viewer-content" id="fileViewerContent">
+      <img id="viewerImage" class="viewer-image" style="display: none;">
+      <div id="viewerPDFContainer" class="viewer-pdf-container" style="display: none;">
+        <iframe id="viewerPDF" style="width: 100%; height: 100%; border: none;"></iframe>
+      </div>
+      <div id="viewerPDFError" class="viewer-unsupported" style="display: none;">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <p style="margin-bottom: 8px; font-size: 1.125rem;">Vista previa no disponible</p>
+        <p style="font-size: 14px; color: #666; margin-bottom: 20px;">Prueba abrirlo de otra forma:</p>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button onclick="openPDFInNewTab()" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            Abrir en pestaña
+          </button>
+          <button onclick="openPDFWithGoogle()" class="btn-primary" style="background: #059669; display: flex; align-items: center; gap: 6px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+            Google Viewer
+          </button>
+          <button onclick="downloadCurrentFile()" class="btn-primary" style="background: #6c757d; display: flex; align-items: center; gap: 6px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Descargar
+          </button>
+        </div>
+      </div>
+      <div id="viewerUnsupported" class="viewer-unsupported" style="display: none;">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+        </svg>
+        <p>Este tipo de archivo no se puede previsualizar</p>
+        <button onclick="downloadCurrentFile()" class="btn-primary">Descargar archivo</button>
+      </div>
+    </div>
+    
+    <!-- Navegación entre archivos -->
+    <div class="file-viewer-nav" id="fileViewerNav" style="display: none;">
+      <button onclick="navigateFile(-1)" class="btn-viewer-nav btn-viewer-nav-prev" title="Anterior">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <button onclick="navigateFile(1)" class="btn-viewer-nav btn-viewer-nav-next" title="Siguiente">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+// Toggle edit form
+function toggleEditForm() {
+  var content = document.getElementById('editFormContent');
+  var icon = document.querySelector('.edit-form-toggle .toggle-icon');
+  
+  if (content.style.display === 'none' || content.style.display === '') {
+    content.style.display = 'block';
+    icon.textContent = '▲';
+  } else {
+    content.style.display = 'none';
+    icon.textContent = '▼';
+  }
+}
+
+// Enviar WhatsApp con autorización usando API wa.me (GRATIS)
+function enviarWhatsAppAutorizacion() {
+  // Datos del paciente
+  var pacienteNombre = "{{ patient.full_name|escapejs }}";
+  var pacienteTelefono = "{{ patient.phone|escapejs }}";
+  var sedeCirugia = "{% if patient.sede %}{{ patient.get_sede_display|escapejs }}{% else %}a confirmar{% endif %}";
+  var fechaCirugia = "{{ patient.planned_date|date:'d/m/Y'|escapejs }}";
+  var horaCirugia = "{% if patient.surgery_time %}{{ patient.surgery_time|time:'H:i'|escapejs }}hs{% else %}a confirmar{% endif %}";
+
+  function normalizarTelefonoWhatsApp(rawPhone) {
+    var digits = (rawPhone || '').replace(/[^0-9]/g, '');
+
+    if (!digits) {
+      return '';
+    }
+
+    if (digits.startsWith('00')) {
+      digits = digits.slice(2);
+    }
+
+    if (digits.startsWith('549')) {
+      return digits;
+    }
+
+    if (digits.startsWith('54')) {
+      var national = digits.slice(2);
+
+      if (national.startsWith('9')) {
+        return digits;
+      }
+
+      if (national.startsWith('0')) {
+        national = national.slice(1);
+      }
+
+      national = national.replace(/^(\d{2,4})15/, '$1');
+
+      if (national.length >= 10 && national.length <= 11) {
+        return '549' + national;
+      }
+
+      return '54' + national;
+    }
+
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+
+    digits = digits.replace(/^(\d{2,4})15/, '$1');
+
+    if (digits.length >= 10 && digits.length <= 11) {
+      return '549' + digits;
+    }
+
+    return digits;
+  }
+  
+  // Buscar archivo de autorización
+  var autorizacionUrl = null;
+  var tieneArchivos = false;
+  
+  {% for a in patient.attachments.all %}
+    tieneArchivos = true;
+    {% if a.type == 'AUTORIZACION' %}
+      if (!autorizacionUrl) {
+        autorizacionUrl = "{{ request.scheme }}://{{ request.get_host }}{{ a.file.url|escapejs }}";
+        console.log('Archivo de autorización encontrado:', autorizacionUrl);
+      }
+    {% endif %}
+  {% endfor %}
+  
+  // Si no hay autorización específica, buscar cualquier archivo
+  if (!autorizacionUrl && tieneArchivos) {
+    {% for a in patient.attachments.all %}
+      {% if forloop.first %}
+        autorizacionUrl = "{{ request.scheme }}://{{ request.get_host }}{{ a.file.url|escapejs }}";
+        console.log('Usando primer archivo disponible:', autorizacionUrl);
+      {% endif %}
+    {% endfor %}
+  }
+  
+  // Construir mensaje de WhatsApp
+  var mensaje = "¡Hola " + pacienteNombre + "! 👋\n\n";
+  mensaje += "Le informamos que su intervención quirúrgica ha sido *AUTORIZADA* ✅\n\n";
+  mensaje += "📋 *Detalles de la cirugía:*\n";
+  mensaje += "📅 Fecha: " + fechaCirugia + "\n";
+  mensaje += "🕐 Hora: " + horaCirugia + "\n";
+  mensaje += "🏥 Sede: " + sedeCirugia + "\n\n";
+  
+  if (autorizacionUrl) {
+    mensaje += "📎 Puede descargar su autorización desde el siguiente enlace:\n";
+    mensaje += autorizacionUrl + "\n\n";
+  } else {
+    console.warn('No se encontró ningún archivo de autorización');
+  }
+  
+  mensaje += "Ante cualquier consulta, no dude en comunicarse con nosotros.\n\n";
+  mensaje += "Saludos cordiales,\n";
+  mensaje += "Panel OVA - Gestión Quirófano";
+  
+  var telefonoLimpio = normalizarTelefonoWhatsApp(pacienteTelefono);
+
+  if (!telefonoLimpio || telefonoLimpio.length < 12) {
+    alert('El número del paciente no tiene un formato válido para WhatsApp: ' + pacienteTelefono);
+    return;
+  }
+  
+  console.log('Teléfono:', telefonoLimpio);
+
+  var whatsappUrl = "https://web.whatsapp.com/send/?phone=" + telefonoLimpio + "&text=" + encodeURIComponent(mensaje) + "&type=phone_number&app_absent=1";
+
+  function abrirWhatsAppWeb() {
+    var enlace = document.createElement('a');
+    enlace.href = whatsappUrl;
+    enlace.target = '_blank';
+    enlace.rel = 'noopener noreferrer';
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(mensaje).finally(function() {
+      abrirWhatsAppWeb();
+    });
+  } else {
+    abrirWhatsAppWeb();
+  }
+}
+
+// Debugging: Verificar que el script se carga
+console.log('Script del visor de archivos cargado');
+
+// Estado del visor
+var fileViewer = {
+  files: [],
+  currentIndex: 0,
+  rotation: 0,
+  scale: 1,
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  translateX: 0,
+  translateY: 0
+};
+
+// Inicializar lista de archivos
+function initFileViewer() {
+  fileViewer.files = [
+    {% for a in patient.attachments.all %}
+    {
+      url: '{{ a.file.url|escapejs }}',
+      name: '{{ a.display_name|escapejs }}',
+      filename: '{{ a.file.name|default:""|escapejs }}'
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
+  console.log('Archivos inicializados:', fileViewer.files);
+}
+
+// Abrir visor
+function viewFile(url, name, index) {
+  console.log('viewFile llamado:', url, name, index);
+  initFileViewer();
+  fileViewer.currentIndex = parseInt(index);
+  
+  // Detectar si es PDF
+  var filename = (url || '').toLowerCase();
+  var ext = filename.split('.').pop();
+  
+  if (ext === 'pdf') {
+    // Los PDFs se abren en nueva pestaña con el visor nativo del navegador
+    console.log('PDF detectado, abriendo en nueva pestaña');
+    window.open(url, '_blank');
+    return; // No abrir el modal
+  }
+  
+  // Para imágenes y otros archivos, usar el modal
+  resetView();
+  
+  var modal = document.getElementById('fileViewerModal');
+  if (!modal) {
+    console.error('Modal no encontrado');
+    return;
+  }
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  
+  loadFile();
+}
+
+// Cargar archivo actual
+function loadFile() {
+  console.log('loadFile llamado, index:', fileViewer.currentIndex);
+  var file = fileViewer.files[fileViewer.currentIndex];
+  if (!file) {
+    console.error('No se encontró archivo en index:', fileViewer.currentIndex);
+    return;
+  }
+  
+  console.log('Cargando archivo:', file);
+  document.getElementById('viewerFileName').textContent = file.name;
+  
+  // Mostrar índice si hay múltiples archivos
+  var navButtons = document.getElementById('fileViewerNav');
+  if (fileViewer.files.length > 1) {
+    document.getElementById('viewerFileIndex').textContent = 
+      '(' + (fileViewer.currentIndex + 1) + ' de ' + fileViewer.files.length + ')';
+    navButtons.style.display = 'flex';
+  } else {
+    document.getElementById('viewerFileIndex').textContent = '';
+    navButtons.style.display = 'none';
+  }
+  
+  var imgViewer = document.getElementById('viewerImage');
+  var pdfContainer = document.getElementById('viewerPDFContainer');
+  var pdfErrorViewer = document.getElementById('viewerPDFError');
+  var unsupportedViewer = document.getElementById('viewerUnsupported');
+  
+  // Ocultar todos
+  imgViewer.style.display = 'none';
+  pdfContainer.style.display = 'none';
+  pdfErrorViewer.style.display = 'none';
+  unsupportedViewer.style.display = 'none';
+  
+  // Extraer extensión del nombre del archivo
+  var filename = (file.filename || file.url || '').toLowerCase();
+  var ext = filename.split('.').pop();
+  
+  console.log('Extensión detectada:', ext);
+  
+  // Mostrar/ocultar botón "Abrir en pestaña" solo para PDFs
+  var btnOpenPDF = document.getElementById('btnOpenPDF');
+  var btnGoogleViewer = document.getElementById('btnGoogleViewer');
+  if (btnOpenPDF) {
+    btnOpenPDF.style.display = (ext === 'pdf') ? 'inline-flex' : 'none';
+  }
+  if (btnGoogleViewer) {
+    btnGoogleViewer.style.display = (ext === 'pdf') ? 'inline-flex' : 'none';
+  }
+  
+  // Determinar tipo de archivo
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].indexOf(ext) !== -1) {
+    // Es imagen
+    console.log('Mostrando imagen');
+    imgViewer.src = file.url;
+    imgViewer.style.display = 'block';
+    enableImageControls(true);
+    initImageDrag();
+  } else if (ext === 'pdf') {
+    // Es PDF - usar el visor nativo del navegador con parámetros optimizados
+    console.log('Mostrando PDF en visor');
+    pdfContainer.style.display = 'block';
+    var pdfIframe = document.getElementById('viewerPDF');
+    
+    // Obtener URL completa del PDF
+    var pdfUrl = file.url;
+    
+    // Si la URL es relativa, convertirla a absoluta
+    if (!pdfUrl.startsWith('http')) {
+      pdfUrl = window.location.origin + pdfUrl;
+    }
+    
+    console.log('URL del PDF:', pdfUrl);
+    
+    // Parámetros para optimizar la visualización del PDF en el iframe
+    // - view=FitH: ajusta el ancho a la ventana
+    // - toolbar=1: muestra la barra de herramientas del visor
+    // - navpanes=0: oculta el panel de navegación lateral (ocupa menos espacio)
+    // - scrollbar=1: permite scroll
+    var pdfUrlWithParams = pdfUrl + '#view=FitH&toolbar=1&navpanes=0&scrollbar=1';
+    
+    console.log('Cargando PDF con visor nativo:', pdfUrlWithParams);
+    pdfIframe.src = pdfUrlWithParams;
+    
+    // Los navegadores modernos (Chrome, Firefox, Edge) tienen visores de PDF integrados
+    // que funcionan perfectamente. Si el navegador no soporta PDFs nativamente,
+    // el usuario puede usar el botón "Abrir en pestaña" para verlo en una nueva ventana
+    
+    pdfIframe.onload = function() {
+      console.log('PDF cargado correctamente en el visor');
+    };
+    
+    pdfIframe.onerror = function() {
+      console.log('Error al cargar PDF, mostrando opciones alternativas');
+      showPDFError();
+    };
+    
+    enableImageControls(false);
+  } else {
+    // Tipo no soportado
+    console.log('Tipo no soportado');
+    unsupportedViewer.style.display = 'flex';
+    enableImageControls(false);
+  }
+}
+
+// Mostrar error de PDF y opciones alternativas
+function showPDFError() {
+  document.getElementById('viewerPDFContainer').style.display = 'none';
+  document.getElementById('viewerPDFError').style.display = 'flex';
+}
+
+// Abrir PDF en nueva pestaña
+function openPDFInNewTab() {
+  var file = fileViewer.files[fileViewer.currentIndex];
+  window.open(file.url, '_blank');
+}
+
+// Abrir PDF con Google Docs Viewer
+function openPDFWithGoogle() {
+  var file = fileViewer.files[fileViewer.currentIndex];
+  var pdfUrl = file.url;
+  
+  // Si la URL es relativa, convertirla a absoluta
+  if (!pdfUrl.startsWith('http')) {
+    pdfUrl = window.location.origin + pdfUrl;
+  }
+  
+  // Abrir con Google Docs Viewer en nueva pestaña
+  var googleViewerUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(pdfUrl);
+  window.open(googleViewerUrl, '_blank');
+}
+
+// Habilitar/deshabilitar controles de imagen
+function enableImageControls(enable) {
+  var controls = ['btnRotateLeft', 'btnRotateRight', 'btnZoomOut', 'btnZoomIn', 'btnReset'];
+  for (var i = 0; i < controls.length; i++) {
+    var elem = document.getElementById(controls[i]);
+    if (elem) {
+      elem.disabled = !enable;
+      elem.style.opacity = enable ? '1' : '0.4';
+    }
+  }
+}
+
+// Rotar archivo
+function rotateFile(degrees) {
+  fileViewer.rotation += degrees;
+  updateTransform();
+}
+
+// Zoom
+function zoomFile(delta) {
+  fileViewer.scale = Math.max(0.5, Math.min(3, fileViewer.scale + delta));
+  updateTransform();
+}
+
+// Restablecer vista
+function resetView() {
+  fileViewer.rotation = 0;
+  fileViewer.scale = 1;
+  fileViewer.translateX = 0;
+  fileViewer.translateY = 0;
+  updateTransform();
+}
+
+// Actualizar transformación
+function updateTransform() {
+  var img = document.getElementById('viewerImage');
+  if (img) {
+    img.style.transform =  'translate(' + fileViewer.translateX + 'px, ' + fileViewer.translateY + 'px) ' +
+      'rotate(' + fileViewer.rotation + 'deg) ' +
+      'scale(' + fileViewer.scale + ')';
+  }
+}
+
+// Navegar entre archivos
+function navigateFile(direction) {
+  fileViewer.currentIndex += direction;
+  
+  if (fileViewer.currentIndex < 0) {
+    fileViewer.currentIndex = fileViewer.files.length - 1;
+  } else if (fileViewer.currentIndex >= fileViewer.files.length) {
+    fileViewer.currentIndex = 0;
+  }
+  
+  resetView();
+  loadFile();
+}
+
+// Descargar archivo actual
+function downloadCurrentFile() {
+  var file = fileViewer.files[fileViewer.currentIndex];
+  var link = document.createElement('a');
+  link.href = file.url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Imprimir archivo actual
+function printCurrentFile() {
+  var file = fileViewer.files[fileViewer.currentIndex];
+  var filename = (file.filename || file.url || '').toLowerCase();
+  var ext = filename.split('.').pop();
+  
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].indexOf(ext) !== -1) {
+    // Imprimir imagen
+    var printWindow = window.open('', '_blank');
+    printWindow.document.write(
+      '<html>' +
+        '<head>' +
+          '<title>' + file.name + '</title>' +
+          '<style>' +
+            'body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }' +
+            'img { max-width: 100%; max-height: 100vh; object-fit: contain; }' +
+          '</style>' +
+        '</head>' +
+        '<body onload="window.print(); window.close();">' +
+          '<img src="' + file.url + '" alt="' + file.name + '">' +
+        '</body>' +
+      '</html>'
+    );
+    printWindow.document.close();
+  } else if (ext === 'pdf') {
+    // Abrir PDF en nueva ventana para imprimir
+    window.open(file.url, '_blank');
+  }
+}
+
+// Cerrar visor
+function closeFileViewer() {
+  document.getElementById('fileViewerModal').style.display = 'none';
+  document.body.style.overflow = 'auto';
+  
+  // Limpiar imagen
+  document.getElementById('viewerImage').src = '';
+  
+  // Limpiar PDF iframe
+  var pdfIframe = document.getElementById('viewerPDF');
+  if (pdfIframe) {
+    pdfIframe.src = '';
+  }
+}
+
+// Drag para mover imagen con zoom (se inicializa solo cuando se usa)
+function initImageDrag() {
+  var viewerImage = document.getElementById('viewerImage');
+  if (!viewerImage || viewerImage.dataset.dragInitialized) return;
+  
+  viewerImage.dataset.dragInitialized = 'true';
+  
+  viewerImage.addEventListener('mousedown', function(e) {
+    if (fileViewer.scale > 1) {
+      fileViewer.isDragging = true;
+      fileViewer.startX = e.clientX - fileViewer.translateX;
+      fileViewer.startY = e.clientY - fileViewer.translateY;
+      viewerImage.style.cursor = 'grabbing';
+    }
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (fileViewer.isDragging) {
+      fileViewer.translateX = e.clientX - fileViewer.startX;
+      fileViewer.translateY = e.clientY - fileViewer.startY;
+      updateTransform();
+    }
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (fileViewer.isDragging) {
+      fileViewer.isDragging = false;
+      viewerImage.style.cursor = 'grab';
+    }
+  });
+}
+
+// Atajos de teclado
+document.addEventListener('keydown', function(e) {
+  var modal = document.getElementById('fileViewerModal');
+  if (!modal || modal.style.display !== 'flex') return;
+  
+  switch(e.key) {
+    case 'Escape':
+      closeFileViewer();
+      break;
+    case 'ArrowLeft':
+      if (fileViewer.files.length > 1) navigateFile(-1);
+      break;
+    case 'ArrowRight':
+      if (fileViewer.files.length > 1) navigateFile(1);
+      break;
+    case 'r':
+    case 'R':
+      rotateFile(90);
+      break;
+    case '+':
+    case '=':
+      zoomFile(0.2);
+      break;
+    case '-':
+    case '_':
+      zoomFile(-0.2);
+      break;
+    case '0':
+      resetView();
+      break;
+  }
+});
+</script>
+
 {% endblock %}

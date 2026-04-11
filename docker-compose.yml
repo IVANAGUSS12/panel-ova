@@ -14,14 +14,14 @@ services:
 
   web:
     build: .
-    command: gunicorn panel_ova.wsgi:application --bind 0.0.0.0:8000
+    command: /bin/sh -c "gunicorn panel_ova.wsgi:application --bind 0.0.0.0:${PORT:-5000}"
     volumes:
       - .:/app
       - media_data:/app/media
     ports:
-      - "8000:8000"
+      - "5000:5000"
     env_file:
-      - .env.example
+      - .env
     depends_on:
       - db
 

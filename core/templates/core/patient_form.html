@@ -17,8 +17,8 @@
   <div class="card-header">
     <h2>Carga de paciente</h2>
     <p class="card-sub">
-      Complete los datos del paciente.<br>
-      <small>Complete patient details (Spanish / English).</small>
+      Complete los datos del paciente. La hora de cirugía es opcional.<br>
+      <small>Complete patient details. Surgery time is optional.</small>
     </p>
   </div>
 
@@ -33,6 +33,17 @@
       color:#6b0000;
       font-size:14px;
   "></div>
+
+  {% if errors %}
+    <div class="alert-error" style="margin: 12px 0; padding: 15px; border-radius: 8px; background: #ffe8e8; border: 1px solid #ffb3b3; color:#6b0000;">
+      <strong>⚠️ Errores encontrados:</strong>
+      <ul style="margin: 10px 0 0 20px; padding: 0;">
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
 
   {% if success %}
     <div class="alert-success">
@@ -61,23 +72,28 @@
     <div class="form-grid">
 
       <div class="form-group">
-        <label>Nombre y Apellido / Full name</label>
-        <input type="text" name="full_name" required>
+        <label>Apellido / Last name</label>
+        <input type="text" name="last_name" value="{{ form_data.last_name|default:'' }}" required>
+      </div>
+
+      <div class="form-group">
+        <label>Nombre / First name</label>
+        <input type="text" name="first_name" value="{{ form_data.first_name|default:'' }}" required>
       </div>
 
       <div class="form-group">
         <label>DNI / ID number</label>
-        <input type="text" name="dni" required>
+        <input type="text" name="dni" value="{{ form_data.dni|default:'' }}" required>
       </div>
 
       <div class="form-group">
         <label>Teléfono / Phone</label>
-        <input type="text" name="phone">
+        <input type="text" name="phone" value="{{ form_data.phone|default:'' }}">
       </div>
 
       <div class="form-group">
         <label>Correo electrónico / Email</label>
-        <input type="email" name="email">
+        <input type="email" name="email" value="{{ form_data.email|default:'' }}">
       </div>
 
       <div class="form-group">
@@ -85,7 +101,7 @@
         <select name="coverage" required>
           <option value="">Seleccione una opción</option>
           {% for c in coverages %}
-            <option value="{{ c }}">{{ c }}</option>
+            <option value="{{ c }}" {% if form_data.coverage == c %}selected{% endif %}>{{ c }}</option>
           {% endfor %}
         </select>
       </div>
@@ -95,7 +111,7 @@
         <select name="service" required>
           <option value="">Seleccione una opción</option>
           {% for s in services %}
-            <option value="{{ s }}">{{ s }}</option>
+            <option value="{{ s }}" {% if form_data.service == s %}selected{% endif %}>{{ s }}</option>
           {% endfor %}
         </select>
       </div>
@@ -105,19 +121,34 @@
         <select name="doctor" required>
           <option value="">Seleccione una opción</option>
           {% for d in doctors %}
-            <option value="{{ d }}">{{ d }}</option>
+            <option value="{{ d }}" {% if form_data.doctor == d %}selected{% endif %}>{{ d }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="form-group">
         <label>Fecha probable de intervención / Planned date</label>
-        <input type="date" name="planned_date" required>
+        <input type="date" name="planned_date" value="{{ form_data.planned_date|default:'' }}" required>
+      </div>
+
+      <div class="form-group">
+        <label>Hora de cirugía / Surgery time <span style="color: var(--color-text-secondary); font-weight: 400; font-size: 0.8rem;">(opcional)</span></label>
+        <input type="time" name="surgery_time" value="{{ form_data.surgery_time|default:'' }}">
+      </div>
+
+      <div class="form-group">
+        <label>Sede a realizar / Location</label>
+        <select name="sede">
+          <option value="" {% if not form_data.sede %}selected{% endif %}>Sin especificar</option>
+          <option value="SAAVEDRA" {% if form_data.sede == 'SAAVEDRA' %}selected{% endif %}>Saavedra</option>
+          <option value="POMBO" {% if form_data.sede == 'POMBO' %}selected{% endif %}>Pombo</option>
+          <option value="LAS HERAS" {% if form_data.sede == 'LAS HERAS' %}selected{% endif %}>Las Heras</option>
+        </select>
       </div>
 
       <div class="form-group form-group-full">
         <label>Observaciones para autorizaciones / External observations</label>
-        <textarea name="external_observations" rows="3"></textarea>
+        <textarea name="external_observations" rows="3">{{ form_data.external_observations|default:'' }}</textarea>
       </div>
 
     </div>
@@ -171,18 +202,9 @@
       </div>
 
       <div class="file-upload-group">
-        <span class="file-upload-label">Resumen de HC</span>
+        <span class="file-upload-label">Resumen de HC / Medical summary</span>
         <label class="custom-file-label">Subir archivo
           <input type="file" name="hc_file" class="custom-file-input" accept=".pdf,image/*">
-        </label>
-        <span class="file-chosen"></span>
-        <span class="file-status"></span>
-      </div>
-
-      <div class="file-upload-group">
-        <span class="file-upload-label">Autorización (si corresponde)</span>
-        <label class="custom-file-label">Subir archivo
-          <input type="file" name="autorizacion_file" class="custom-file-input" accept=".pdf,image/*">
         </label>
         <span class="file-chosen"></span>
         <span class="file-status"></span>
@@ -273,39 +295,45 @@
 }
 </style>
 
-<!-- ✅ AGREGADO: Botón flotante WhatsApp (ícono) -->
+<!-- Botón flotante WhatsApp -->
 <a
   class="wpp-float"
   href="https://wa.me/5491155922359?text=Hola%20necesito%20ayuda%20con%20la%20carga%20de%20Panel%20OVA"
   target="_blank"
   rel="noopener"
-  aria-label="WhatsApp"
-  title="WhatsApp"
+  aria-label="Contactar por WhatsApp"
+  title="¿Necesitas ayuda? Contáctanos por WhatsApp"
 >
-  <!-- ícono svg -->
-  <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-    <path fill="#fff" d="M19.11 17.12c-.27-.14-1.6-.79-1.85-.88-.25-.09-.43-.14-.61.14-.18.27-.7.88-.86 1.06-.16.18-.32.2-.59.07-.27-.14-1.15-.42-2.19-1.34-.81-.72-1.36-1.6-1.52-1.87-.16-.27-.02-.42.12-.56.12-.12.27-.32.41-.48.14-.16.18-.27.27-.45.09-.18.05-.34-.02-.48-.07-.14-.61-1.47-.84-2.01-.22-.53-.44-.46-.61-.47l-.52-.01c-.18 0-.48.07-.73.34-.25.27-.95.93-.95 2.26 0 1.33.97 2.62 1.11 2.8.14.18 1.91 2.91 4.63 4.08.65.28 1.16.45 1.56.57.65.21 1.25.18 1.72.11.52-.08 1.6-.65 1.83-1.28.23-.63.23-1.17.16-1.28-.07-.11-.25-.18-.52-.32z"/>
-    <path fill="#fff" d="M16.01 5.33c-5.88 0-10.67 4.78-10.67 10.67 0 1.88.5 3.72 1.45 5.34L5.33 26.67l5.5-1.41c1.56.85 3.32 1.3 5.18 1.3 5.88 0 10.67-4.78 10.67-10.67S21.89 5.33 16.01 5.33zm0 19.27c-1.68 0-3.3-.44-4.71-1.28l-.34-.2-3.26.84.88-3.18-.22-.36c-.88-1.45-1.35-3.12-1.35-4.83 0-5.05 4.11-9.16 9.16-9.16s9.16 4.11 9.16 9.16-4.11 9.16-9.16 9.16z"/>
+  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <path d="M16 0C7.164 0 0 7.164 0 16c0 2.828.738 5.482 2.031 7.781L0 32l8.438-2.219C10.656 31.102 13.227 32 16 32c8.836 0 16-7.164 16-16S24.836 0 16 0zm0 29.333c-2.547 0-4.938-.711-6.969-1.953l-.5-.297-5.188 1.359 1.391-5.047-.328-.516C2.711 20.828 2 18.492 2 16 2 8.828 8.828 2 16 2s14 6.828 14 14-6.828 13.333-14 13.333z" fill="white"/>
+    <path d="M22.906 18.938c-.344-.172-2.031-1.016-2.344-1.125-.313-.109-.547-.172-.781.172-.234.344-.891 1.125-1.094 1.359-.203.234-.406.266-.75.094-.344-.172-1.453-.547-2.766-1.719-1.016-.906-1.703-2.031-1.906-2.375-.203-.344-.016-.531.156-.703.156-.156.344-.406.516-.609.172-.203.234-.344.344-.578.109-.234.063-.437-.031-.609-.094-.172-.781-1.875-1.063-2.563-.281-.672-.563-.578-.781-.594l-.656-.016c-.234 0-.609.094-.922.438-.313.344-1.203 1.172-1.203 2.859s1.234 3.328 1.406 3.563c.172.234 2.422 3.688 5.875 5.172.813.344 1.453.547 1.953.703.828.266 1.578.234 2.172.141.656-.109 2.031-.828 2.313-1.625.281-.797.281-1.484.203-1.625-.078-.141-.313-.234-.656-.406z" fill="white"/>
   </svg>
 </a>
 
 <style>
-  .wpp-float{
+  .wpp-float {
     position: fixed;
-    right: 18px;
-    bottom: 18px;
-    width: 56px;
-    height: 56px;
-    border-radius: 9999px;
+    right: 24px;
+    bottom: 24px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     text-decoration: none;
     z-index: 99999;
-    box-shadow: 0 8px 20px rgba(0,0,0,.25);
-    background: #25D366;
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4), 0 2px 6px rgba(0, 0, 0, 0.15);
+    background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .wpp-float:hover{ transform: scale(1.06); }
+  .wpp-float:hover {
+    transform: scale(1.1);
+    box-shadow: 0 8px 24px rgba(37, 211, 102, 0.5), 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+  .wpp-float:active {
+    transform: scale(1.05);
+  }
 </style>
 
 <!-- SCRIPT -->

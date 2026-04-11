@@ -3,7 +3,6 @@
 
 {% block content %}
 
-<!-- RESUMEN GENERAL -->
 <section class="card">
   <div class="card-header">
     <h2>Resumen general</h2>
@@ -20,46 +19,6 @@
     <li>Últimos 7 días: <strong>{{ total_semana }}</strong></li>
   </ul>
 </section>
-
-<!-- MIS CASOS ASIGNADOS -->
-{% if mis_casos %}
-<section class="card">
-  <div class="card-header">
-    <h2>Mis casos asignados (últimos 10)</h2>
-    <p class="card-sub">
-      Casos que te han sido asignados recientemente.
-    </p>
-  </div>
-
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Paciente</th>
-        <th>Servicio</th>
-        <th>Fecha cirugía</th>
-        <th>Estado</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in mis_casos %}
-        <tr {% if p.is_urgent %}class="urgent-row"{% endif %}>
-          <td>
-            {{ p.full_name }}
-            {% if p.is_urgent %}<span class="alert-icon">⚠️</span>{% endif %}
-          </td>
-          <td>{{ p.service }}</td>
-          <td>{{ p.planned_date|date:"d/m/Y" }}</td>
-          <td><span class="badge">{{ p.get_status_display }}</span></td>
-          <td>
-            <a href="{% url 'core:patient_detail' p.pk %}" class="btn-ghost btn-small">Ver</a>
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
 
 <section class="card">
   <div class="card-header">
@@ -96,26 +55,82 @@
   </div>
 
   <h3>Hoy ({{ hoy|date:"d/m/Y" }})</h3>
-  <ul>
+  <ul class="agenda-list">
     {% for p in proximas_hoy %}
-      <li>
-        <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
-        – {{ p.full_name }} ({{ p.service }}) – {{ p.coverage }}
+      <li class="agenda-item">
+        <div class="agenda-row">
+          <div class="agenda-left">
+            <span class="agenda-dot is-danger"></span>
+            <div>
+              <strong class="agenda-patient">{{ p.full_name }}</strong>
+              <div class="agenda-meta">
+                {{ p.service }} • {{ p.coverage }}
+              </div>
+            </div>
+          </div>
+          <strong class="agenda-date is-danger">{{ p.planned_date|date:"d/m/Y" }}</strong>
+        </div>
       </li>
     {% empty %}
-      <li>No hay cirugías para hoy.</li>
+      <li class="text-secondary">No hay cirugías para hoy.</li>
     {% endfor %}
   </ul>
 
-  <h3 style="margin-top:1rem;">Próximos 7 días</h3>
-  <ul>
+  <h3 class="mt-4">Próximos 7 días</h3>
+  <ul class="agenda-list">
     {% for p in proximas_semana %}
-      <li>
-        <strong>{{ p.planned_date|date:"d/m/Y" }}</strong>
-        – {{ p.full_name }} ({{ p.service }}) – {{ p.coverage }}
-      </li>
+      {% with dias_faltantes=p.planned_date|timeuntil %}
+        {% if "day" in dias_faltantes or "día" in dias_faltantes %}
+          {% if "1 day" in dias_faltantes or "1 día" in dias_faltantes or dias_faltantes|slice:":6" == "2 days" or dias_faltantes|slice:":7" == "2 días" %}
+            <li class="agenda-item is-warning">
+              <div class="agenda-row">
+                <div class="agenda-left">
+                  <span class="agenda-dot is-warning"></span>
+                  <div>
+                    <strong class="agenda-patient">{{ p.full_name }}</strong>
+                    <div class="agenda-meta">
+                      {{ p.service }} • {{ p.coverage }}
+                    </div>
+                  </div>
+                </div>
+                <strong class="agenda-date is-warning">{{ p.planned_date|date:"d/m/Y" }}</strong>
+              </div>
+            </li>
+          {% else %}
+            <li class="agenda-item is-primary">
+              <div class="agenda-row">
+                <div class="agenda-left">
+                  <span class="agenda-dot is-primary"></span>
+                  <div>
+                    <strong class="agenda-patient">{{ p.full_name }}</strong>
+                    <div class="agenda-meta">
+                      {{ p.service }} • {{ p.coverage }}
+                    </div>
+                  </div>
+                </div>
+                <strong class="agenda-date is-primary">{{ p.planned_date|date:"d/m/Y" }}</strong>
+              </div>
+            </li>
+          {% endif %}
+        {% else %}
+          <li class="agenda-item is-primary">
+            <div class="agenda-row">
+              <div class="agenda-left">
+                <span class="agenda-dot is-primary"></span>
+                <div>
+                  <strong class="agenda-patient">{{ p.full_name }}</strong>
+                  <div class="agenda-meta">
+                    {{ p.service }} • {{ p.coverage }}
+                  </div>
+                </div>
+              </div>
+              <strong class="agenda-date is-primary">{{ p.planned_date|date:"d/m/Y" }}</strong>
+            </div>
+          </li>
+        {% endif %}
+      {% endwith %}
     {% empty %}
-      <li>No hay cirugías en los próximos 7 días.</li>
+      <li class="text-secondary">No hay cirugías en los próximos 7 días.</li>
     {% endfor %}
   </ul>
 </section>

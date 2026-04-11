@@ -132,6 +132,8 @@ class Command(BaseCommand):
             s = str(raw).strip().lower()
             if s == "autorizado":
                 return Patient.STATUS_AUTORIZADO
+            if s in {"presupuesto si", "presupuesto sí"}:
+                return Patient.STATUS_PRESUPUESTO_SI
             if s == "solicitado":
                 return Patient.STATUS_SOLICITADO
             if s == "pendiente":

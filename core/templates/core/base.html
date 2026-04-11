@@ -4,13 +4,11 @@
   <head>
     <meta charset="UTF-8">
     <title>{% block title %}Panel OVA{% endblock %}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
-    <!-- CSS propio con cache busting -->
-    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v=20260123">
-
-    <!-- FullCalendar (CSS) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
+    <!-- CSS propio -->
+    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v=20260306v1">
 
     <!-- Fuente -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,6 +17,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
       rel="stylesheet"
     >
+    {% block extra_head %}{% endblock %}
   </head>
 
   <body>
@@ -39,8 +38,11 @@
         <nav class="topbar-nav">
             <a href="/">Dashboard</a>
             <a href="/servicio/">Servicio</a>
-            <a href="/calendario/">Calendario</a>
+            <a href="/calendario/">Agenda</a>
             <a href="/estadisticas/">Estadísticas</a>
+            {% if user.is_superuser %}
+          <a href="{% url 'core:user_management' %}" class="nav-admin-link">👤 Usuarios</a>
+            {% endif %}
         </nav>
 
         <div class="topbar-right">
@@ -50,7 +52,7 @@
         </div>
         {% else %}
         <!-- MODO PACIENTE (sin login, sin menú, sin nada del panel) -->
-        <div class="topbar-left" style="margin:auto;">
+        <div class="topbar-left is-centered">
           <span class="logo-chip">OVA</span>
           <div class="logo-text">
             <span class="logo-title">Panel OVA</span>
@@ -66,12 +68,19 @@
 
     <main class="main">
       <div class="main-container">
+        {% if messages %}
+          <div style="display: grid; gap: 0.75rem; margin-bottom: 1rem;">
+            {% for message in messages %}
+              <div style="padding: 0.9rem 1rem; border-radius: 12px; border: 1px solid {% if 'error' in message.tags %}#fecaca{% elif 'warning' in message.tags %}#fde68a{% else %}#bfdbfe{% endif %}; background: {% if 'error' in message.tags %}#fef2f2{% elif 'warning' in message.tags %}#fffbeb{% else %}#eff6ff{% endif %}; color: {% if 'error' in message.tags %}#991b1b{% elif 'warning' in message.tags %}#92400e{% else %}#1d4ed8{% endif %}; font-size: 0.95rem;">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
         {% block content %}{% endblock %}
       </div>
     </main>
 
-    <!-- JS de terceros -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+    {% block extra_scripts %}{% endblock %}
   </body>
 </html>

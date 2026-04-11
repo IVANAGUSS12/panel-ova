@@ -1,6 +1,14 @@
 Django==5.0.2
-djangorestframework==3.15.1
+
 gunicorn==23.0.0
 python-dotenv==1.0.1
 openpyxl==3.1.5
 reportlab==4.2.2
+matplotlib==3.8.2
+pillow==10.2.0
+
+# Static serving & compression for production
+whitenoise
+
+# Optional: runtime/compression pipeline for CSS/JS
+django-compressor
