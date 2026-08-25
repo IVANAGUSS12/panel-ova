@@ -3,14 +3,70 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Panel OVA - Login</title>
-  <link rel="stylesheet" href="{% static 'core/css/styles.css' %}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingreso | Administración Quirúrgica CEMIC</title>
+  <meta name="description" content="Ingreso al sistema de Administración Quirúrgica de CEMIC">
+  <style>
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f5f8fa;
+      color: #1f2933;
+    }
+    .login-body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .login-container { width: min(100%, 420px); }
+    .login-card {
+      background: #fff;
+      border: 1px solid #d8e2e7;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 8px 24px rgba(31, 41, 51, .07);
+    }
+    input, button { font: inherit; }
+    input {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid #d8e2e7;
+      border-radius: 10px;
+      padding: .6rem .75rem;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      min-height: 44px;
+      border: 0;
+      border-radius: 10px;
+      background: #007a78;
+      color: #fff;
+      font-weight: 600;
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v=20260623cemic1">
+  <link rel="stylesheet" href="{% static 'core/css/app-refresh.css' %}?v=20260623cemic1">
 </head>
 <body class="login-body">
   <div class="login-container">
     <div class="login-card">
-      <h1>Panel OVA</h1>
-      <h2>Ingreso</h2>
+      <div class="login-brand">
+        <span class="logo-chip" aria-hidden="true">C</span>
+        <div>
+          <h1>CEMIC</h1>
+          <p>Administración Quirúrgica</p>
+        </div>
+      </div>
+      <h2>Ingreso al sistema</h2>
+      <p class="login-intro">Acceso exclusivo para personal autorizado.</p>
       <form method="post">
         {% csrf_token %}
         {% if form.non_field_errors %}

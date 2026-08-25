@@ -1,0 +1,284 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agenda de Quirófanos {{ current_agenda.title }} - CEMIC</title>
+  <link rel="stylesheet" href="{% static 'core/saavedra_quirofanos/styles.css' %}?v=20260623cemic1" />
+  <style>
+    .panelova-bridge {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 20px 0;
+      font: 500 14px/1.4 Inter, "Segoe UI", Arial, sans-serif;
+    }
+
+    .panelova-bridge a {
+      color: #1F2933;
+      text-decoration: none;
+      border: 1px solid #D8E2E7;
+      background: #FFFFFF;
+      border-radius: 10px;
+      padding: 8px 14px;
+    }
+
+    .panelova-bridge a:hover {
+      background: #DDF5F3;
+      border-color: rgba(0, 122, 120, 0.18);
+      color: #005F5D;
+    }
+
+    .panelova-bridge__meta {
+      color: #52616B;
+      font-size: 13px;
+    }
+
+    .panelova-bridge__actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .agenda-tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .agenda-tabs a[aria-current="page"] {
+      background: #007A78;
+      color: #fff;
+      border-color: #007A78;
+    }
+
+    @media (max-width: 720px) {
+      .panelova-bridge {
+        flex-direction: column;
+        align-items: stretch;
+        padding-bottom: 6px;
+      }
+
+      .panelova-bridge a {
+        text-align: center;
+      }
+
+      .panelova-bridge__actions {
+        justify-content: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <form style="display:none">{% csrf_token %}</form>
+
+  <div class="panelova-bridge">
+    <div class="agenda-tabs">
+      {% for agenda in agendas %}
+        <a href="{% url 'core:calendar' %}?agenda={{ agenda.key }}" {% if agenda.key == current_agenda.key %}aria-current="page"{% endif %}>Agenda {{ agenda.title }}</a>
+      {% endfor %}
+    </div>
+    <div class="panelova-bridge__actions">
+      <div class="panelova-bridge__meta">Vista actual: {{ current_agenda.title }}</div>
+      <a href="{% url 'core:dashboard' %}">← Volver al panel</a>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">{{ current_agenda.short_title }}</div>
+        <div>
+          <h1>{{ current_agenda.title }}</h1>
+          <p>Agenda de quirófanos</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Reporte CEMIC</h3>
+        <button id="refreshBtn">↓ Generar nuevo reporte</button>
+        <div class="upload-area">
+          <label class="upload-label" for="uploadInput" id="uploadLabel">
+            📂 Cargar reporte manualmente
+          </label>
+          <input type="file" id="uploadInput" accept=".xlsx,.xls,.html,.htm" style="display:none">
+        </div>
+        <div id="lastDownload" class="hint">Sin datos. Generá el primer reporte.</div>
+        <div id="loadingMsg" class="hint loading-pulse" style="display:none">
+          ⏳ Descargando… puede tardar unos minutos.
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="monthTitle">Calendario</h2>
+          <p id="monthSubtitle">Cantidad de turnos por día · Sede {{ current_agenda.title }}</p>
+        </div>
+        <div class="nav-actions">
+          <button id="prevMonth">‹</button>
+          <button id="todayBtn" class="secondary">Hoy</button>
+          <button id="nextMonth">›</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div id="calendar" class="calendar"></div>
+      </section>
+
+      <section class="card movement-history-card">
+        <div class="movement-history-head">
+          <div>
+            <h3>Historial de movimientos</h3>
+            <p id="movementSummary">Cada reporte nuevo se compara contra el anterior y se agrega al historial.</p>
+          </div>
+          <div class="movement-history-filters">
+            <select id="movementTypeFilter">
+              <option value="all">Todos</option>
+              <option value="suspended">Suspendidos</option>
+              <option value="added">Agregados</option>
+              <option value="changed">Modificados / reprogramados</option>
+              <option value="removed">Eliminados</option>
+            </select>
+            <select id="movementChangeFilter">
+              <option value="all">Todo tipo de cambios</option>
+              <option value="comments">Comentarios / observaciones</option>
+              <option value="logistics">Destino / farmacia / insumos</option>
+              <option value="clinical">Práctica / cirujano / clínica</option>
+            </select>
+            <input id="movementDetectedDate" type="date">
+            <input id="movementSearch" type="text" placeholder="🔎 Paciente, práctica, cirujano...">
+          </div>
+        </div>
+        <div id="movementStatus" class="hint">Todavía no hay comparación guardada.</div>
+        <div id="movementList" class="movement-list empty">Todavía no hay comparación.</div>
+      </section>
+
+      <section class="card">
+        <div class="day-header">
+          <div>
+            <h3 id="dayTitle">Seleccioná un día</h3>
+            <p id="daySummary">Las cirugías aparecerán organizadas por quirófano y horario.</p>
+          </div>
+          <div class="day-header-actions">
+            {% if current_agenda.key == "saavedra" %}
+              <button id="printDayBtn" type="button" class="secondary">Imprimir programación del día</button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="day-filters" style="margin-top:-2px;">
+          <div class="form-group" style="min-width:170px;">
+            <label for="wppLoadTimeoutMs">Espera carga WhatsApp (ms)</label>
+            <input id="wppLoadTimeoutMs" type="number" min="3000" step="1000" value="25000">
+          </div>
+          <div class="form-group" style="min-width:170px;">
+            <label for="wppBetweenDelayMs">Espera entre envíos (ms)</label>
+            <input id="wppBetweenDelayMs" type="number" min="1000" step="500" value="4000">
+          </div>
+          <div class="hint" style="display:flex;align-items:flex-end;">La selección y el envío se hacen dentro de cada quirófano.</div>
+        </div>
+        <div class="day-filters">
+          <input id="filterSearch" type="text" placeholder="🔍 Paciente, cirujano, obra social…">
+          <select id="filterRoom">
+            <option value="">Todos los quirófanos</option>
+          </select>
+          <button id="filterPending" class="filter-toggle">⏳ Solo pendientes</button>
+        </div>
+        <div id="scheduleGrid" class="schedule-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="internacionModal" class="modal-backdrop" hidden>
+    <form id="internacionForm" class="modal-panel">
+      <div class="modal-head">
+        <h3 id="internacionModalTitle">Agregar paciente</h3>
+        <button type="button" class="secondary modal-close" id="internacionCloseBtn">Cerrar</button>
+      </div>
+      <input type="hidden" id="internacionId">
+      <div class="modal-grid">
+        <label>Fecha de ingreso<input id="internacionFecha" type="date" required></label>
+        <label>Horario<input id="internacionHorario" type="time"></label>
+        <label>Nombre y apellido<input id="internacionNombre" type="text" required></label>
+        <label>DNI<input id="internacionDni" type="text"></label>
+        <label>Edad<input id="internacionEdad" type="text"></label>
+        <label>Obra social<input id="internacionObraSocial" type="text"></label>
+        <label>Motivo / prestación<input id="internacionMotivo" type="text"></label>
+        <label>Servicio solicitante<input id="internacionServicio" type="text"></label>
+        <label>Médico responsable<input id="internacionMedico" type="text"></label>
+        <label>Cama asignada<input id="internacionCama" type="text"></label>
+        <label>Destino<input id="internacionDestino" type="text"></label>
+        <label>Teléfono de contacto<input id="internacionTelefono" type="text"></label>
+        <label class="modal-wide">Observaciones internas<textarea id="internacionObs" rows="3"></textarea></label>
+      </div>
+      <div class="modal-actions">
+        <button type="submit">Guardar</button>
+      </div>
+    </form>
+  </div>
+
+  <template id="caseTemplate">
+    <div class="case-card">
+      <div class="case-head">
+        <label class="case-select-wrap">
+          <input type="checkbox" class="case-select-checkbox">
+          <span>Seleccionar</span>
+        </label>
+        <strong class="case-patient"></strong>
+        <span class="case-time badge-time"></span>
+      </div>
+      <div class="case-body"></div>
+      <div class="case-actions">
+        <label class="obs-label">Observaciones internas</label>
+        <textarea class="obs-input" rows="2" placeholder="Anotar seguimiento, indicaciones, etc."></textarea>
+        <div class="status-grid">
+          <label>Estado material
+            <select class="status-material">
+              <option value="Pendiente">⏳ Pendiente</option>
+              <option value="OK">✅ OK</option>
+              <option value="No requiere">⬜ No requiere</option>
+              <option value="No autorizado">❌ No autorizado</option>
+            </select>
+          </label>
+          <label>Autorización cirugía
+            <select class="status-auth">
+              <option value="Pendiente">⏳ Pendiente</option>
+              <option value="OK">✅ OK</option>
+              <option value="No requiere">⬜ No requiere</option>
+              <option value="No autorizado">❌ No autorizado</option>
+            </select>
+          </label>
+          <label>Estado presupuesto
+            <select class="status-budget">
+              <option value="Pendiente">⏳ Pendiente</option>
+              <option value="OK">✅ OK</option>
+              <option value="No requiere">⬜ No requiere</option>
+              <option value="No autorizado">❌ No autorizado</option>
+            </select>
+          </label>
+          <label>Orden medica
+            <select class="status-order">
+              <option value="Pendiente">⏳ Pendiente</option>
+              <option value="OK">✅ OK</option>
+              <option value="No OK">❌ No OK</option>
+            </select>
+          </label>
+        </div>
+        <button class="save-case secondary">Guardar estado</button>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    window.CALENDAR_AGENDA_KEY = "{{ current_agenda.key|escapejs }}";
+    window.CALENDAR_AGENDA_TITLE = "{{ current_agenda.title|escapejs }}";
+    window.CALENDAR_AGENDA_SHORT = "{{ current_agenda.short_title|escapejs }}";
+  </script>
+  <script src="{% static 'core/saavedra_quirofanos/app.js' %}?v=20260629estadia2"></script>
+</body>
+</html>

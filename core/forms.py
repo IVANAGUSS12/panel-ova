@@ -50,6 +50,12 @@ class PatientFilterForm(forms.Form):
 
     service = forms.CharField(required=False, label='Servicio')
 
+    sede = forms.ChoiceField(
+        required=False,
+        label='Sede',
+        choices=[('', 'Todas')] + Patient.SEDE_CHOICES,
+    )
+
     # Fechas de cirugía
     date_from = forms.DateField(
         required=False,

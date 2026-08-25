@@ -1,4 +1,6 @@
-from django.db import models
+import uuid
+
+from django.db import models, IntegrityError
 from django.contrib.auth.models import User
 from django.utils import timezone
 
@@ -6,24 +8,39 @@ from .text_utils import normalize_text
 
 
 class Patient(models.Model):
-    STATUS_PENDIENTE = 'PENDIENTE'
-    STATUS_SOLICITADO = 'SOLICITADO'
+    STATUS_PENDIENTE_ENVIO_PRESTADOR = 'PENDIENTE_ENVIO_PRESTADOR'
+    STATUS_PENDIENTE = STATUS_PENDIENTE_ENVIO_PRESTADOR
+    STATUS_PENDIENTE_PRESTADOR = 'PENDIENTE_PRESTADOR'
+    STATUS_SOLICITADO = STATUS_PENDIENTE_PRESTADOR
+    STATUS_PENDIENTE_MEDICO = 'PENDIENTE_MEDICO'
+    STATUS_PENDIENTE_PACIENTE = 'PENDIENTE_PACIENTE'
     STATUS_AUTORIZADO = 'AUTORIZADO'
-    STATUS_PRESUPUESTO_SI = 'PRESUPUESTO_SI'
-    STATUS_MATERIAL_PENDIENTE = 'MATERIAL_PENDIENTE'
-    STATUS_RECHAZO = 'RECHAZO'
+    STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO = 'PEND_COMERCIAL_PRESUPUESTO'
+    STATUS_PRESUPUESTO_SI = STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO
+    STATUS_AUTORIZADO_MATERIAL_PENDIENTE = 'AUTORIZADO_MATERIAL_PEND'
+    STATUS_MATERIAL_PENDIENTE = STATUS_AUTORIZADO_MATERIAL_PENDIENTE
+    STATUS_RECHAZO_COBERTURA = 'RECHAZO_COBERTURA'
+    STATUS_RECHAZO = STATUS_RECHAZO_COBERTURA
     STATUS_REPROGRAMADO = 'REPROGRAMADO'
     STATUS_REALIZADO = 'REALIZADO'
+    STATUS_SUSPENDIDA = 'SUSPENDIDA'
+    STATUS_CANCELA_MEDICO = 'CANCELA_MEDICO'
+    STATUS_CANCELA_PTE = 'CANCELA_PTE'
 
     STATUS_CHOICES = [
-        (STATUS_PENDIENTE, 'Pendiente'),
-        (STATUS_SOLICITADO, 'Solicitado'),
+        (STATUS_PENDIENTE_ENVIO_PRESTADOR, 'Pendiente envio prestador'),
+        (STATUS_PENDIENTE_PRESTADOR, 'Pendiente prestador'),
+        (STATUS_PENDIENTE_MEDICO, 'Pendiente medico'),
+        (STATUS_PENDIENTE_PACIENTE, 'Pendiente paciente'),
         (STATUS_AUTORIZADO, 'Autorizado'),
-        (STATUS_PRESUPUESTO_SI, 'Presupuesto sí'),
-        (STATUS_MATERIAL_PENDIENTE, 'Material pendiente'),
-        (STATUS_RECHAZO, 'Rechazo'),
+        (STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO, 'Pendiente comercial - presupuesto'),
+        (STATUS_AUTORIZADO_MATERIAL_PENDIENTE, 'Autorizado - material pendiente'),
+        (STATUS_RECHAZO_COBERTURA, 'Rechazo cobertura'),
         (STATUS_REPROGRAMADO, 'Reprogramado'),
         (STATUS_REALIZADO, 'Realizado'),
+        (STATUS_SUSPENDIDA, 'Suspendida'),
+        (STATUS_CANCELA_MEDICO, 'Cancela medico'),
+        (STATUS_CANCELA_PTE, 'Cancela pte'),
     ]
 
     SEDE_SAAVEDRA = 'SAAVEDRA'
@@ -66,6 +83,21 @@ class Patient(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Fecha/hora en que el paciente entró al estado pendiente prestador
+    # Se gestiona automáticamente vía la señal pre_save en signals.py
+    solicitado_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Pendiente prestador desde'
+    )
+
+    # Fecha/hora en que el paciente entró al estado ACTUAL (cualquier estado)
+    status_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='En estado actual desde'
+    )
+
     status = models.CharField(
         max_length=30,
         choices=STATUS_CHOICES,
@@ -98,6 +130,10 @@ class Patient(models.Model):
     en_quirofano = models.BooleanField(
         default=False,
         verbose_name='En quirófano'
+    )
+    impreso = models.BooleanField(
+        default=False,
+        verbose_name='Impreso'
     )
     observaciones_calendario = models.TextField(
         blank=True,
@@ -143,8 +179,8 @@ class Patient(models.Model):
 
         # ID de tracking
         if not self.tracking_id:
-            self.tracking_id = f"OVA{int(timezone.now().timestamp())}"
-        
+            self.tracking_id = f"OVA{uuid.uuid4().hex[:12].upper()}"
+
         # Invalidar caché de opciones cuando se guarda un paciente
         cache.delete('patient_service_options')
         cache.delete('patient_doctor_options')
@@ -152,7 +188,18 @@ class Patient(models.Model):
         cache.delete('stats_all_services')
         cache.delete('stats_all_doctors')
 
-        super().save(*args, **kwargs)
+        for _attempt in range(10):
+            try:
+                super().save(*args, **kwargs)
+                break
+            except IntegrityError as exc:
+                is_tracking_collision = 'tracking_id' in str(exc).lower()
+                if is_tracking_collision and (not kwargs.get('update_fields') or 'tracking_id' in (kwargs.get('update_fields') or [])):
+                    self.tracking_id = f"OVA{uuid.uuid4().hex[:12].upper()}"
+                else:
+                    raise
+        else:
+            raise RuntimeError("No se pudo generar un tracking_id único tras 10 intentos.")
 
     def __str__(self):
         return f"{self.full_name} ({self.dni})"
@@ -336,10 +383,12 @@ class QuirofanoEntry(models.Model):
     ]
 
     WORKFLOW_STATUS_CHOICES = [
-        (Patient.STATUS_PENDIENTE, 'Pendiente'),
-        (Patient.STATUS_SOLICITADO, 'Solicitado'),
+        (Patient.STATUS_PENDIENTE, 'Pendiente envio prestador'),
+        (Patient.STATUS_PENDIENTE_PRESTADOR, 'Pendiente prestador'),
+        (Patient.STATUS_PENDIENTE_MEDICO, 'Pendiente medico'),
+        (Patient.STATUS_PENDIENTE_PACIENTE, 'Pendiente paciente'),
         (Patient.STATUS_AUTORIZADO, 'Autorizado'),
-        (Patient.STATUS_MATERIAL_PENDIENTE, 'Material pendiente'),
+        (Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE, 'Autorizado - material pendiente'),
     ]
 
     snapshot = models.ForeignKey(
@@ -368,8 +417,10 @@ class QuirofanoEntry(models.Model):
     patient_name_norm = models.CharField(max_length=255, blank=True, default='', db_index=True)
     coverage = models.CharField(max_length=255, blank=True, default='')
     dni = models.CharField(max_length=50, blank=True, default='')
+    report_phone = models.CharField(max_length=50, blank=True, default='')
     doctor = models.CharField(max_length=255, blank=True, default='')
     doctor_norm = models.CharField(max_length=255, blank=True, default='')
+    destination_service = models.CharField(max_length=255, blank=True, default='')
     specialty_raw = models.CharField(max_length=255, blank=True, default='')
     canonical_service = models.CharField(max_length=255, blank=True, default='', db_index=True)
     origin = models.CharField(max_length=255, blank=True, default='')
@@ -403,3 +454,57 @@ class QuirofanoEntry(models.Model):
     def get_active_workflow_status(self):
         return self.resolved_workflow_status
 
+
+class InternacionVarias(models.Model):
+    ORIGEN_MANUAL = 'manual'
+    ORIGEN_AUTOMATICO_INTERVENCION = 'automatico_intervencion'
+    ORIGEN_AUTOMATICO_CIRUJANO = 'automatico_cirujano'
+
+    ORIGEN_CHOICES = [
+        (ORIGEN_MANUAL, 'Manual'),
+        (ORIGEN_AUTOMATICO_INTERVENCION, 'Automatico por intervencion'),
+        (ORIGEN_AUTOMATICO_CIRUJANO, 'Automatico por cirujano'),
+    ]
+
+    fecha = models.DateField(db_index=True)
+    horario = models.CharField(max_length=20, blank=True, default='')
+    paciente_nombre = models.CharField(max_length=255)
+    paciente_dni = models.CharField(max_length=50, blank=True, default='')
+    edad = models.CharField(max_length=30, blank=True, default='')
+    obra_social = models.CharField(max_length=255, blank=True, default='')
+    motivo = models.CharField(max_length=255, blank=True, default='')
+    servicio_solicitante = models.CharField(max_length=255, blank=True, default='')
+    medico_responsable = models.CharField(max_length=255, blank=True, default='')
+    cama_asignada = models.CharField(max_length=100, blank=True, default='')
+    destino = models.CharField(max_length=255, blank=True, default='')
+    telefono = models.CharField(max_length=80, blank=True, default='')
+    observaciones = models.TextField(blank=True, default='')
+    origen_registro = models.CharField(max_length=40, choices=ORIGEN_CHOICES, default=ORIGEN_MANUAL)
+    cirugia_origen_id = models.CharField(max_length=255, blank=True, default='')
+    motivo_automatico = models.CharField(max_length=255, blank=True, default='')
+    fecha_cirugia_original = models.DateField(null=True, blank=True)
+    horario_cirugia_original = models.CharField(max_length=20, blank=True, default='')
+    intervencion_original = models.CharField(max_length=255, blank=True, default='')
+    cirujano_original = models.CharField(max_length=255, blank=True, default='')
+    automatic_signature = models.CharField(max_length=500, blank=True, default='', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['fecha', 'horario', 'paciente_nombre']
+        verbose_name = 'Internacion varias'
+        verbose_name_plural = 'Internaciones varias'
+        indexes = [
+            models.Index(fields=['fecha', 'origen_registro'], name='intern_varias_fecha_origen_idx'),
+            models.Index(fields=['cirugia_origen_id'], name='intern_varias_cirugia_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['automatic_signature'],
+                condition=~models.Q(automatic_signature=''),
+                name='uniq_intern_varias_auto_signature',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.paciente_nombre} - {self.fecha:%d/%m/%Y}"

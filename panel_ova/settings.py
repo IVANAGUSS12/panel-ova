@@ -39,8 +39,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ⚠️ ADVERTENCIA: Cambiar SECRET_KEY en producción usando variable de entorno
 SECRET_KEY = os.getenv('SECRET_KEY', 'insecure-key')
 
-# ⚠️ ADVERTENCIA: Cambiar a False en producción
-DEBUG = True   # Dejalo así hasta que funcione Cloudflare
+DEBUG = get_bool_env('DEBUG', False)
+AUTO_REFRESH_AGENDAS = get_bool_env('AUTO_REFRESH_AGENDAS', True)
+AUTO_REFRESH_AGENDAS_INTERVAL_MINUTES = get_int_env('AUTO_REFRESH_AGENDAS_INTERVAL_MINUTES', 20)
 
 # Hosts permitidos. Se pueden actualizar desde .env sin tocar el código.
 ALLOWED_HOSTS = get_list_env(
@@ -60,6 +61,7 @@ CSRF_TRUSTED_ORIGINS = get_list_env(
         'http://localhost',
         'http://127.0.0.1',
         'http://10.1.42.70',
+        'https://*.trycloudflare.com',
         'https://panel.oficinavirtualcemic.com',
     ],
 )
@@ -83,9 +85,6 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 # ===========================
 MIDDLEWARE = [
-    # ⚠ ESTE BLOQUEABA TODO LO EXTERNO — LO SACAMOS
-    # 'core.middleware.ExternalQRLockdownMiddleware',
-
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'core.middleware.SlowQueryLoggingMiddleware',
@@ -93,13 +92,9 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'core.middleware.CurrentUserMiddleware',  # Captura usuario para historial
-    # (debug toolbar middleware se insertará dinámicamente solo en DEBUG
-    #  si el paquete está instalado)
+    'core.middleware.CurrentUserMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware', 
-
-    # Dejalo, no bloquea externo
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.AuditMiddleware',
 ]
 
@@ -129,12 +124,29 @@ WSGI_APPLICATION = 'panel_ova.wsgi.application'
 # ===========================
 # DATABASE
 # ===========================
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+_database_url = os.getenv('DATABASE_URL')
+_pg_db = os.getenv('POSTGRES_DB')
+if _database_url:
+    import dj_database_url
+    DATABASES = {'default': dj_database_url.parse(_database_url, conn_max_age=600)}
+elif _pg_db:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': _pg_db,
+            'USER': os.getenv('POSTGRES_USER', ''),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # ===========================
 # PASSWORD VALIDATION
@@ -161,18 +173,28 @@ USE_TZ = True
 # ===========================
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [
-    BASE_DIR / 'core' / 'static',
-]
+STATICFILES_DIRS = []
 
-# Use WhiteNoise to serve compressed static files with cache-friendly names
-# In production this should be used together with `collectstatic` and
-# a webserver or CDN that serves files from `STATIC_ROOT`.
-# En desarrollo, usar el storage estándar para evitar problemas
+# Use WhiteNoise to serve compressed static files with cache-friendly names.
 if DEBUG:
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    _STATICFILES_STORAGE_BACKEND = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 else:
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    _STATICFILES_STORAGE_BACKEND = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': _STATICFILES_STORAGE_BACKEND,
+    },
+}
+
+WHITENOISE_ROOT = STATIC_ROOT
+WHITENOISE_MIMETYPES = {
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+}
 
 # Staticfiles finders: include CompressorFinder so django-compressor can
 # locate and process CSS/JS blocks in templates.
@@ -212,8 +234,8 @@ INTERNAL_IPS = [
 # CLOUDFLARE / HTTPS SETTINGS
 # ===========================
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 
 # Logging minimal para consultas lentas (registrador: 'slow_queries')
@@ -250,3 +272,30 @@ EMAIL_USE_SSL = get_bool_env('EMAIL_USE_SSL', False)
 EMAIL_TIMEOUT = get_int_env('EMAIL_TIMEOUT', 30)
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'panel-ova@localhost')
 SERVER_EMAIL = os.getenv('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
+PATIENT_TRACKING_FROM_EMAIL = os.getenv(
+    'PATIENT_TRACKING_FROM_EMAIL',
+    DEFAULT_FROM_EMAIL or 'oficinavirtualdeautorizaciones@cemic.edu.ar',
+)
+
+ADMISSION_EMAIL_BACKEND = os.getenv('ADMISSION_EMAIL_BACKEND', EMAIL_BACKEND)
+ADMISSION_EMAIL_HOST = os.getenv('ADMISSION_EMAIL_HOST', EMAIL_HOST)
+ADMISSION_EMAIL_PORT = get_int_env('ADMISSION_EMAIL_PORT', EMAIL_PORT)
+ADMISSION_EMAIL_HOST_USER = os.getenv('ADMISSION_EMAIL_HOST_USER', EMAIL_HOST_USER)
+ADMISSION_EMAIL_HOST_PASSWORD = os.getenv('ADMISSION_EMAIL_HOST_PASSWORD', EMAIL_HOST_PASSWORD)
+ADMISSION_EMAIL_USE_TLS = get_bool_env('ADMISSION_EMAIL_USE_TLS', EMAIL_USE_TLS)
+ADMISSION_EMAIL_USE_SSL = get_bool_env('ADMISSION_EMAIL_USE_SSL', EMAIL_USE_SSL)
+ADMISSION_EMAIL_TIMEOUT = get_int_env('ADMISSION_EMAIL_TIMEOUT', EMAIL_TIMEOUT)
+ADMISSION_DEFAULT_FROM_EMAIL = os.getenv(
+    'ADMISSION_DEFAULT_FROM_EMAIL',
+    ADMISSION_EMAIL_HOST_USER or DEFAULT_FROM_EMAIL,
+)
+
+# ===========================
+# WHATSAPP CLOUD API
+# ===========================
+WHATSAPP_CLOUD_API_VERSION = os.getenv('WHATSAPP_CLOUD_API_VERSION', 'v20.0')
+WHATSAPP_CLOUD_PHONE_NUMBER_ID = os.getenv('WHATSAPP_CLOUD_PHONE_NUMBER_ID', '')
+WHATSAPP_CLOUD_ACCESS_TOKEN = os.getenv('WHATSAPP_CLOUD_ACCESS_TOKEN', '')
+WHATSAPP_CLOUD_TIMEOUT = get_int_env('WHATSAPP_CLOUD_TIMEOUT', 20)
+WHATSAPP_TRACKING_TEMPLATE_NAME = os.getenv('WHATSAPP_TRACKING_TEMPLATE_NAME', '')
+WHATSAPP_TRACKING_TEMPLATE_LANGUAGE = os.getenv('WHATSAPP_TRACKING_TEMPLATE_LANGUAGE', 'es_AR')

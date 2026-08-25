@@ -3,13 +3,226 @@
 
 {% block title %}Carga de paciente - Panel OVA{% endblock %}
 
+{% block extra_head %}
+<style>
+  body {
+    background:
+      radial-gradient(circle at 100% 35%, rgba(22, 163, 74, .10), transparent 32rem),
+      linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+  }
+
+  .main {
+    padding-top: 1rem;
+  }
+
+  .card-qr {
+    width: min(100%, 1230px);
+    margin: 0 auto 2rem;
+    padding: 2.5rem 3rem !important;
+    border: 1px solid rgba(207, 217, 232, .85);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 24px 60px rgba(31, 41, 55, .10);
+  }
+
+  .card-qr .card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, .8fr);
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 1.35rem;
+  }
+
+  .card-qr h2 {
+    margin: 0;
+    color: #172033;
+    font-size: 1.55rem;
+    line-height: 1.2;
+  }
+
+  .card-qr .card-sub {
+    margin: 0;
+    color: #5f6f89;
+    line-height: 1.45;
+  }
+
+  .card-qr .form-qr {
+    display: flex;
+    flex-direction: column;
+    gap: 1.45rem;
+  }
+
+  .card-qr .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.15rem 1.25rem;
+  }
+
+  .card-qr .form-group,
+  .card-qr .file-upload-group {
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+  }
+
+  .card-qr .form-group-full {
+    grid-column: span 2;
+  }
+
+  .card-qr label,
+  .card-qr .file-upload-label {
+    color: #243044;
+    font-size: .88rem;
+    font-weight: 700;
+  }
+
+  .card-qr input[type="text"],
+  .card-qr input[type="email"],
+  .card-qr input[type="tel"],
+  .card-qr input[type="date"],
+  .card-qr input[type="time"],
+  .card-qr select,
+  .card-qr textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: .72rem .9rem;
+    border: 1px solid #cfd9e8;
+    border-radius: 10px;
+    background: #fff;
+    color: #172033;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+    box-shadow: inset 0 1px 0 rgba(15, 23, 42, .03);
+  }
+
+  .card-qr textarea {
+    min-height: 82px;
+    resize: vertical;
+  }
+
+  .card-qr input:focus,
+  .card-qr select:focus,
+  .card-qr textarea:focus {
+    border-color: rgba(37, 99, 235, .72);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .14);
+  }
+
+  .card-qr .field-has-error input,
+  .card-qr .field-has-error select,
+  .card-qr .field-has-error textarea,
+  .card-qr .file-upload-group.field-has-error .custom-file-label {
+    border-color: #dc2626;
+    background: #fff5f5;
+  }
+
+  .card-qr .field-error-message {
+    color: #b91c1c;
+    font-size: .84rem;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .card-qr .divider {
+    width: 100%;
+    border: 0;
+    border-top: 1px solid #d8e0ed;
+    margin: .3rem 0 0;
+  }
+
+  .card-qr .files-title {
+    margin: .15rem 0 0;
+    color: #172033;
+    font-size: 1rem;
+  }
+
+  .card-qr .file-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .card-qr .custom-file-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-height: 42px;
+    padding: .65rem 1rem;
+    border: 2px dashed #cfd9e8;
+    border-radius: 10px;
+    background: #fff;
+    color: #5f6f89;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .card-qr .custom-file-input {
+    display: none;
+  }
+
+  .card-qr .file-chosen,
+  .card-qr .file-status {
+    color: #5f6f89;
+    font-size: .84rem;
+  }
+
+  .card-qr .form-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .card-qr .btn-primary,
+  .card-qr button[type="submit"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: .72rem 1.3rem;
+    border: 1px solid rgba(0, 103, 230, .72);
+    border-radius: 999px;
+    background: linear-gradient(180deg, #0a84ff, #0067e6);
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    text-decoration: none;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.32), 0 9px 20px rgba(0, 122, 255, .20);
+    cursor: pointer;
+  }
+
+  @media (max-width: 768px) {
+    .card-qr {
+      padding: 1.25rem !important;
+      border-radius: 14px;
+    }
+
+    .card-qr .card-header,
+    .card-qr .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .card-qr .form-group-full {
+      grid-column: span 1;
+    }
+
+    .card-qr .form-actions {
+      justify-content: stretch;
+    }
+
+    .card-qr .form-actions .btn-primary {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <section class="card card-form card-qr">
 
   <!-- BOTÓN DE GUÍA (abre el modal) -->
   <div style="text-align:right; margin-bottom:15px;">
-    <button type="button" class="btn-primary" onclick="openGuideModal()" style="background:#4b6cb7;">
+    <button type="button" class="btn-primary" onclick="openGuideModal()" style="background:#4b6cb7;" aria-haspopup="dialog" aria-controls="guideModal">
       📘 Ver guía
     </button>
   </div>
@@ -45,100 +258,94 @@
     </div>
   {% endif %}
 
-  {% if success %}
-    <div class="alert-success">
-      <strong>Solicitud enviada correctamente.</strong><br>
-
-      ID de seguimiento / Tracking ID:
-      <span class="badge-id" style="font-size:22px;">{{ tracking_id }}</span>
-
-      <br><br>
-
-      <a href="/seguimiento/?id={{ tracking_id }}" 
-         class="btn-primary" 
-         style="margin-top:10px;display:inline-block;">
-         Ver estado de la solicitud
-      </a>
-
-      <p style="margin-top:10px;font-size:13px;">
-        Guarde este código para consultar el estado de su trámite.
-      </p>
-    </div>
-  {% endif %}
-
   <form method="post" enctype="multipart/form-data" class="form-qr" id="qr-form">
     {% csrf_token %}
 
     <div class="form-grid">
 
-      <div class="form-group">
-        <label>Apellido / Last name</label>
-        <input type="text" name="last_name" value="{{ form_data.last_name|default:'' }}" required>
+      <div class="form-group {% if field_errors.last_name %}field-has-error{% endif %}">
+        <label for="id_last_name">Apellido / Last name</label>
+        <input type="text" id="id_last_name" name="last_name" value="{{ form_data.last_name|default:'' }}" required autocomplete="family-name">
+        {% if field_errors.last_name %}<span class="field-error-message">{{ field_errors.last_name.0 }}</span>{% endif %}
+      </div>
+
+      <div class="form-group {% if field_errors.first_name %}field-has-error{% endif %}">
+        <label for="id_first_name">Nombre / First name</label>
+        <input type="text" id="id_first_name" name="first_name" value="{{ form_data.first_name|default:'' }}" required autocomplete="given-name">
+        {% if field_errors.first_name %}<span class="field-error-message">{{ field_errors.first_name.0 }}</span>{% endif %}
+      </div>
+
+      <div class="form-group {% if field_errors.dni %}field-has-error{% endif %}">
+        <label for="id_dni">DNI / ID number</label>
+        <input type="text" id="id_dni" name="dni" value="{{ form_data.dni|default:'' }}" required inputmode="numeric" pattern="[0-9\s\.\-]+" autocomplete="off">
+        {% if field_errors.dni %}<span class="field-error-message">{{ field_errors.dni.0 }}</span>{% endif %}
       </div>
 
       <div class="form-group">
-        <label>Nombre / First name</label>
-        <input type="text" name="first_name" value="{{ form_data.first_name|default:'' }}" required>
+        <label for="id_phone">Teléfono / Phone</label>
+        <input type="tel" id="id_phone" name="phone" value="{{ form_data.phone|default:'' }}" autocomplete="tel">
       </div>
 
-      <div class="form-group">
-        <label>DNI / ID number</label>
-        <input type="text" name="dni" value="{{ form_data.dni|default:'' }}" required>
+      <div class="form-group {% if field_errors.email %}field-has-error{% endif %}">
+        <label for="id_email">Correo electrónico / Email</label>
+        <input type="email" id="id_email" name="email" value="{{ form_data.email|default:'' }}" autocomplete="email" required>
+        {% if field_errors.email %}<span class="field-error-message">{{ field_errors.email.0 }}</span>{% endif %}
       </div>
 
-      <div class="form-group">
-        <label>Teléfono / Phone</label>
-        <input type="text" name="phone" value="{{ form_data.phone|default:'' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Correo electrónico / Email</label>
-        <input type="email" name="email" value="{{ form_data.email|default:'' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Cobertura / Coverage</label>
-        <select name="coverage" required>
+      <div class="form-group {% if field_errors.coverage %}field-has-error{% endif %}">
+        <label for="id_coverage">Cobertura / Coverage</label>
+        <select id="id_coverage" name="coverage" required>
           <option value="">Seleccione una opción</option>
           {% for c in coverages %}
             <option value="{{ c }}" {% if form_data.coverage == c %}selected{% endif %}>{{ c }}</option>
           {% endfor %}
         </select>
+        {% if field_errors.coverage %}<span class="field-error-message">{{ field_errors.coverage.0 }}</span>{% endif %}
       </div>
 
-      <div class="form-group">
-        <label>Servicio / Service</label>
-        <select name="service" required>
+      <div class="form-group {% if field_errors.service %}field-has-error{% endif %}">
+        <label for="id_service">Servicio / Service</label>
+        <select id="id_service" name="service" required>
           <option value="">Seleccione una opción</option>
           {% for s in services %}
             <option value="{{ s }}" {% if form_data.service == s %}selected{% endif %}>{{ s }}</option>
           {% endfor %}
         </select>
+        {% if field_errors.service %}<span class="field-error-message">{{ field_errors.service.0 }}</span>{% endif %}
       </div>
 
-      <div class="form-group">
-        <label>Médico tratante / Treating doctor</label>
-        <select name="doctor" required>
+      <div class="form-group {% if field_errors.doctor %}field-has-error{% endif %}">
+        <label for="id_doctor">Profesional / Treating doctor</label>
+        <select id="id_doctor" name="doctor" required>
           <option value="">Seleccione una opción</option>
           {% for d in doctors %}
             <option value="{{ d }}" {% if form_data.doctor == d %}selected{% endif %}>{{ d }}</option>
           {% endfor %}
+          <option value="OTROS" {% if form_data.doctor == 'OTROS' %}selected{% endif %}>OTROS</option>
         </select>
+        {% if field_errors.doctor %}<span class="field-error-message">{{ field_errors.doctor.0 }}</span>{% endif %}
+      </div>
+
+      <div class="form-group {% if field_errors.other_doctor %}field-has-error{% endif %}" id="other-doctor-group" style="display: none;">
+        <label for="id_other_doctor">Nombre del profesional / Doctor name</label>
+        <input type="text" id="id_other_doctor" name="other_doctor" value="{{ form_data.other_doctor|default:'' }}" autocomplete="off" placeholder="ESCRIBA EL NOMBRE EN MAYÚSCULAS">
+        {% if field_errors.other_doctor %}<span class="field-error-message">{{ field_errors.other_doctor.0 }}</span>{% endif %}
+      </div>
+
+      <div class="form-group {% if field_errors.planned_date %}field-has-error{% endif %}">
+        <label for="id_planned_date">Fecha probable de intervención / Planned date</label>
+        <input type="date" id="id_planned_date" name="planned_date" value="{{ form_data.planned_date|default:'' }}" required>
+        {% if field_errors.planned_date %}<span class="field-error-message">{{ field_errors.planned_date.0 }}</span>{% endif %}
       </div>
 
       <div class="form-group">
-        <label>Fecha probable de intervención / Planned date</label>
-        <input type="date" name="planned_date" value="{{ form_data.planned_date|default:'' }}" required>
+        <label for="id_surgery_time">Hora de cirugía / Surgery time <span style="color: var(--color-text-secondary); font-weight: 400; font-size: 0.8rem;">(opcional)</span></label>
+        <input type="time" id="id_surgery_time" name="surgery_time" value="{{ form_data.surgery_time|default:'' }}">
       </div>
 
       <div class="form-group">
-        <label>Hora de cirugía / Surgery time <span style="color: var(--color-text-secondary); font-weight: 400; font-size: 0.8rem;">(opcional)</span></label>
-        <input type="time" name="surgery_time" value="{{ form_data.surgery_time|default:'' }}">
-      </div>
-
-      <div class="form-group">
-        <label>Sede a realizar / Location</label>
-        <select name="sede">
+        <label for="id_sede">Sede a realizar / Location</label>
+        <select id="id_sede" name="sede">
           <option value="" {% if not form_data.sede %}selected{% endif %}>Sin especificar</option>
           <option value="SAAVEDRA" {% if form_data.sede == 'SAAVEDRA' %}selected{% endif %}>Saavedra</option>
           <option value="POMBO" {% if form_data.sede == 'POMBO' %}selected{% endif %}>Pombo</option>
@@ -147,8 +354,8 @@
       </div>
 
       <div class="form-group form-group-full">
-        <label>Observaciones para autorizaciones / External observations</label>
-        <textarea name="external_observations" rows="3">{{ form_data.external_observations|default:'' }}</textarea>
+        <label for="id_external_observations">Observaciones para autorizaciones / External observations</label>
+        <textarea id="id_external_observations" name="external_observations" rows="3">{{ form_data.external_observations|default:'' }}</textarea>
       </div>
 
     </div>
@@ -159,31 +366,34 @@
 
     <div class="file-grid">
 
-      <div class="file-upload-group">
+      <div class="file-upload-group {% if field_errors.dni_file %}field-has-error{% endif %}">
         <span class="file-upload-label">DNI (frente)</span>
         <label class="custom-file-label">Subir archivo
           <input type="file" name="dni_file" class="custom-file-input" accept=".pdf,image/*" required>
         </label>
         <span class="file-chosen"></span>
         <span class="file-status"></span>
+        {% if field_errors.dni_file %}<span class="field-error-message">{{ field_errors.dni_file.0 }}</span>{% endif %}
       </div>
 
-      <div class="file-upload-group">
+      <div class="file-upload-group {% if field_errors.credencial_file %}field-has-error{% endif %}">
         <span class="file-upload-label">Credencial de cobertura</span>
         <label class="custom-file-label">Subir archivo
           <input type="file" name="credencial_file" class="custom-file-input" accept=".pdf,image/*" required>
         </label>
         <span class="file-chosen"></span>
         <span class="file-status"></span>
+        {% if field_errors.credencial_file %}<span class="field-error-message">{{ field_errors.credencial_file.0 }}</span>{% endif %}
       </div>
 
-      <div class="file-upload-group">
+      <div class="file-upload-group {% if field_errors.orden_intervencion_file %}field-has-error{% endif %}">
         <span class="file-upload-label">Orden de intervención</span>
         <label class="custom-file-label">Subir archivo
           <input type="file" name="orden_intervencion_file" class="custom-file-input" accept=".pdf,image/*" required>
         </label>
         <span class="file-chosen"></span>
         <span class="file-status"></span>
+        {% if field_errors.orden_intervencion_file %}<span class="field-error-message">{{ field_errors.orden_intervencion_file.0 }}</span>{% endif %}
       </div>
 
     </div>
@@ -213,29 +423,103 @@
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn-primary">Enviar solicitud</button>
+      <button type="submit" class="btn-primary" id="submit-btn" aria-describedby="submit-hint">
+        Enviar solicitud
+      </button>
+      <span id="submit-hint" class="sr-only">Al enviar recibirá un código OVA para hacer seguimiento de su solicitud.</span>
     </div>
 
   </form>
 
 </section>
 
+{% if success %}
+<div id="successModal" role="dialog" aria-modal="true" aria-labelledby="successModalTitle" aria-describedby="successModalDescription" style="
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(10, 28, 52, 0.72);
+  z-index:100000;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+">
+  <div style="
+    background:#ffffff;
+    width:min(720px, 100%);
+    padding:36px 30px;
+    border-radius:24px;
+    box-shadow:0 28px 70px rgba(0,0,0,0.28);
+    text-align:center;
+    animation:fadeIn 0.25s ease;
+  ">
+    <div style="
+      width:84px;
+      height:84px;
+      margin:0 auto 18px;
+      border-radius:50%;
+      background:linear-gradient(135deg, #d9f8df 0%, #a9edb6 100%);
+      color:#14532d;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:44px;
+      font-weight:800;
+    ">✓</div>
+
+    <p style="margin:0 0 8px; font-size:1.45rem; font-weight:700; color:#14532d;">Solicitud enviada correctamente</p>
+    <h2 id="successModalTitle" style="margin:0 0 16px; font-size:2.2rem; line-height:1.15; color:#0f172a;">¿Desea realizar otra solicitud?</h2>
+
+    <div style="
+      margin:0 auto 18px;
+      padding:18px 20px;
+      max-width:420px;
+      border-radius:18px;
+      background:#f5f9ff;
+      border:1px solid #d5e6ff;
+    ">
+      <p style="margin:0 0 8px; font-size:1rem; color:#475569;">ID de seguimiento</p>
+      <div style="font-size:2rem; font-weight:800; letter-spacing:0.08em; color:#0b3b91;">{{ tracking_id }}</div>
+    </div>
+
+    <p id="successModalDescription" style="margin:0 0 24px; font-size:1.15rem; line-height:1.5; color:#334155;">
+    Puede cargar otra solicitud ahora o consultar el estado de esta con el código informado.
+    {% if email_sent %}
+      <br><span style="display:inline-block; margin-top:8px; color:#156238; font-weight:700;">Tambien enviamos automaticamente un mail con el tracking, el link de anestesia y el PDF cuando esta cargado.</span>
+    {% endif %}
+    </p>
+
+    <div class="success-modal-actions" style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
+      <button type="button" class="btn-primary" onclick="closeSuccessModal()" style="font-size:1.2rem; padding:16px 28px; min-width:250px;">
+        Sí, realizar otra solicitud
+      </button>
+      <a href="{{ tracking_url }}" class="btn-primary" style="font-size:1.2rem; padding:16px 28px; min-width:250px; display:inline-flex; align-items:center; justify-content:center; text-decoration:none; background:#0b3b91;">
+        Ver estado de la solicitud
+      </a>
+    </div>
+
+    <p style="margin:18px 0 0; font-size:1rem; color:#64748b;">Para seguir cargando, cierre este aviso y complete un nuevo formulario.</p>
+  </div>
+</div>
+{% endif %}
+
 <!-- SPINNER -->
-<div id="sending-overlay" style="
+<div id="sending-overlay" role="status" aria-live="assertive" aria-label="Enviando solicitud, por favor espere" style="
     position:fixed;top:0;left:0;width:100%;height:100%;
     background:rgba(0,0,0,0.45);display:none;
     align-items:center;justify-content:center;
     z-index:9999;color:white;font-size:22px;">
-    <div>
-        <div class="spinner-border text-light" style="width:3rem;height:3rem;"></div>
-        <p class="mt-3">Enviando solicitud...</p>
+    <div style="text-align:center;">
+        <div class="ova-spinner" aria-hidden="true"></div>
+        <p style="margin-top:1rem;font-size:1.1rem;font-weight:600;">Enviando solicitud...</p>
+        <p style="font-size:0.85rem;opacity:0.8;">Esto puede tardar unos segundos.</p>
     </div>
 </div>
 
 <!-- ===========================
      MODAL POP-UP DE GUÍA
 =========================== -->
-<div id="guideModal" style="
+<div id="guideModal" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle" style="
     display:none;
     position:fixed;
     top:0; left:0;
@@ -257,7 +541,7 @@
   ">
 
       <!-- Botón X para cerrar -->
-      <button onclick="closeGuideModal()" style="
+      <button onclick="closeGuideModal()" aria-label="Cerrar guía" style="
           position:absolute;
           top:10px;
           right:10px;
@@ -267,7 +551,7 @@
           cursor:pointer;
       ">✕</button>
 
-      <h2 style="margin-top:0; margin-bottom:15px;">📘 Guía para cargar la solicitud</h2>
+      <h2 id="guideModalTitle" style="margin-top:0; margin-bottom:15px;">📘 Guía para cargar la solicitud</h2>
 
       <p><strong>1)</strong> Complete los datos personales del paciente.</p>
       <p><strong>2)</strong> Suba fotos <strong>claras y legibles</strong> del DNI de Frente.</p>
@@ -292,6 +576,23 @@
 @keyframes fadeIn {
     from { opacity:0; transform:scale(0.95); }
     to   { opacity:1; transform:scale(1); }
+}
+
+@media (max-width: 640px) {
+  #successModal h2 {
+    font-size: 1.8rem !important;
+  }
+
+  #successModal p,
+  #successModal a,
+  #successModal button,
+  #successModal div {
+    word-break: break-word;
+  }
+
+  #successModal .success-modal-actions {
+    flex-direction: column;
+  }
 }
 </style>
 
@@ -346,11 +647,69 @@ function closeGuideModal() {
     document.getElementById("guideModal").style.display = "none";
 }
 
+function openSuccessModal() {
+  const modal = document.getElementById("successModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+}
+
+function closeSuccessModal() {
+  const modal = document.getElementById("successModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  const firstField = document.getElementById("id_last_name");
+  if (firstField) {
+    firstField.focus();
+  }
+}
+
 window.addEventListener("click", function(e) {
     const modal = document.getElementById("guideModal");
     if (e.target === modal) {
         closeGuideModal();
     }
+
+  const successModal = document.getElementById("successModal");
+  if (e.target === successModal) {
+    closeSuccessModal();
+  }
+});
+
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") {
+    closeGuideModal();
+    closeSuccessModal();
+  }
+});
+
+document.addEventListener("DOMContentLoaded", function() {
+  if (document.getElementById("successModal")) {
+    openSuccessModal();
+  }
+
+  const doctorSelect = document.getElementById("id_doctor");
+  const otherDoctorGroup = document.getElementById("other-doctor-group");
+  const otherDoctorInput = document.getElementById("id_other_doctor");
+
+  function syncDoctorMode() {
+    if (!doctorSelect || !otherDoctorGroup || !otherDoctorInput) return;
+
+    const useCustomDoctor = doctorSelect.value === "OTROS";
+    otherDoctorGroup.style.display = useCustomDoctor ? "flex" : "none";
+    otherDoctorInput.required = useCustomDoctor;
+
+    if (!useCustomDoctor) {
+      otherDoctorInput.value = "";
+    }
+  }
+
+  if (doctorSelect && otherDoctorInput) {
+    doctorSelect.addEventListener("change", syncDoctorMode);
+    otherDoctorInput.addEventListener("input", function() {
+      this.value = this.value.toUpperCase();
+    });
+    syncDoctorMode();
+  }
 });
 
 document.querySelectorAll('.custom-file-input').forEach(input => {
@@ -380,6 +739,8 @@ document.getElementById("qr-form").addEventListener("submit", function() {
 (function () {
   const form = document.getElementById("qr-form");
   if (!form) return;
+  const doctorSelect = form.querySelector('[name="doctor"]');
+  const otherDoctorInput = form.querySelector('[name="other_doctor"]');
 
   // ✅ CLAVE: desactiva la validación automática del navegador (sin tocar el HTML)
   // así el evento submit SIEMPRE llega a tu JS y podés mostrar mensajes.
@@ -390,6 +751,35 @@ document.getElementById("qr-form").addEventListener("submit", function() {
     { name: "credencial_file", label: "Credencial de cobertura" },
     { name: "orden_intervencion_file", label: "Orden de intervención" }
   ];
+
+  const REQUIRED_FIELDS = [
+    { name: "last_name", label: "Apellido" },
+    { name: "first_name", label: "Nombre" },
+    { name: "dni", label: "DNI" },
+    { name: "coverage", label: "Cobertura" },
+    { name: "service", label: "Servicio" },
+    { name: "doctor", label: "Profesional" },
+    { name: "planned_date", label: "Fecha probable de intervencion" }
+  ];
+
+  function setFieldError(input, message) {
+    if (!input) return;
+    const group = input.closest('.form-group');
+    if (!group) return;
+    group.classList.toggle('field-has-error', Boolean(message));
+
+    let messageNode = group.querySelector('.js-field-error');
+    if (!message && messageNode) {
+      messageNode.remove();
+      return;
+    }
+    if (message && !messageNode) {
+      messageNode = document.createElement('span');
+      messageNode.className = 'field-error-message js-field-error';
+      group.appendChild(messageNode);
+    }
+    if (messageNode) messageNode.textContent = message || "";
+  }
 
   function setStatus(input, html) {
     if (!input) return;
@@ -423,6 +813,24 @@ document.getElementById("qr-form").addEventListener("submit", function() {
     const errors = [];
 
     // 1) Chequeo de archivos obligatorios (SIEMPRE)
+    REQUIRED_FIELDS.forEach(({ name, label }) => {
+      const input = form.querySelector('[name="' + name + '"]');
+      const missing = input && input.required && !String(input.value || "").trim();
+      if (missing) {
+        const message = "Falta completar " + label + ".";
+        errors.push(message);
+        setFieldError(input, message);
+      } else {
+        setFieldError(input, "");
+      }
+    });
+
+    if (doctorSelect && doctorSelect.value === "OTROS" && otherDoctorInput && !otherDoctorInput.value.trim()) {
+      const message = "Falta completar el nombre del profesional.";
+      errors.push(message);
+      setFieldError(otherDoctorInput, message);
+    }
+
     REQUIRED_FILES.forEach(({ name, label }) => {
       const input = form.querySelector('input[type="file"][name="' + name + '"]');
       const ok = input && input.files && input.files.length > 0;
@@ -445,12 +853,7 @@ document.getElementById("qr-form").addEventListener("submit", function() {
       const overlay = document.getElementById("sending-overlay");
       if (overlay) overlay.style.display = "none";
 
-      if (errors.length) {
-        showErrors(errors);
-      } else {
-        // si no faltan archivos, pero hay otro campo requerido
-        showErrors(["Faltan completar campos obligatorios del formulario."]);
-      }
+      showErrors(errors.length ? errors : ["Revise el campo marcado en rojo."]);
 
       // muestra los globitos nativos indicando exactamente qué campo falta
       form.reportValidity();

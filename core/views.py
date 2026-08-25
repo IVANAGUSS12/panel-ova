@@ -1,15 +1,26 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 from io import BytesIO
+import json
+import logging
+import re
 import smtplib
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+logger = logging.getLogger(__name__)
 
 from urllib.parse import urlencode
 import os
 from pathlib import Path
 
 from django.conf import settings
-from django.core.mail import EmailMessage
-from django.db.models import F, Value
+from django.core.mail import EmailMessage, get_connection
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db.models import Case, F, IntegerField, Value, When
 from django.db.models.functions import Lower, Replace
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -41,6 +52,431 @@ from .models import Attachment, Patient, QuirofanoEntry, QuirofanoSnapshot
 from .quirofano import canonicalize_service, default_quirofano_window, import_daily_quirofano_snapshot, normalize_dni
 from .text_utils import normalize_text as _normalize_text
 
+def build_patient_whatsapp_message(patient_name, surgery_date, doctor) -> str:
+    patient_name = str(patient_name or '').strip() or 'paciente'
+    doctor = str(doctor or '').strip() or 'profesional a confirmar'
+
+    if hasattr(surgery_date, 'strftime'):
+        surgery_date_label = surgery_date.strftime('%d/%m/%Y')
+    else:
+        raw_date = str(surgery_date or '').strip()
+        try:
+            surgery_date_label = datetime.strptime(raw_date[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except (TypeError, ValueError):
+            surgery_date_label = raw_date or 'fecha a confirmar'
+
+    return (
+        f'Estimado/a paciente y/o familiar de {patient_name}, nos comunicamos desde el Área de Administración Quirúrgica de CEMIC.\n\n'
+        f'Nos contactamos por la intervención que tiene programada para el día {surgery_date_label} con el profesional {doctor}.\n\n'
+        'Queríamos consultar sobre el estado de la autorización de dicha intervención.\n\n'
+        'Asimismo, aprovechamos para informarle que CEMIC cuenta con un área de autorizaciones, desde donde podemos gestionar la autorización de la intervención por usted.\n\n'
+        'Para iniciar la gestión, le solicitamos que cargue la documentación correspondiente en el siguiente enlace:\n\n'
+        'https://panel.oficinavirtualcemic.com/qr/carga/\n\n'
+        'Muchas gracias.\n'
+        'Área de Administración Quirúrgica\n'
+        'CEMIC'
+    )
+
+DEFAULT_WHATSAPP_LOAD_TIMEOUT_MS = 25000
+DEFAULT_WHATSAPP_POST_SEND_DELAY_MS = 2500
+DEFAULT_WHATSAPP_BETWEEN_SEND_DELAY_MS = 4000
+
+
+def _normalize_whatsapp_phone(raw_phone: str | None) -> str:
+    digits = re.sub(r'\D+', '', str(raw_phone or ''))
+    if not digits:
+        return ''
+
+    if digits.startswith('00'):
+        digits = digits[2:]
+
+    if digits.startswith('549'):
+        return digits
+
+    if digits.startswith('54'):
+        national = digits[2:]
+        if national.startswith('9'):
+            return digits
+        if national.startswith('0'):
+            national = national[1:]
+        national = re.sub(r'^(\d{2,4})15', r'\1', national)
+        if 10 <= len(national) <= 11:
+            return f'549{national}'
+        return f'54{national}'
+
+    if digits.startswith('0'):
+        digits = digits[1:]
+
+    digits = re.sub(r'^(\d{2,4})15', r'\1', digits)
+    if 10 <= len(digits) <= 11:
+        return f'549{digits}'
+    return digits
+
+
+def _parse_positive_int(value: str | None, default: int) -> int:
+    try:
+        parsed = int(str(value or '').strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _quirofano_management_next_url(request, active_snapshot_id: int | None = None) -> str:
+    next_url = request.POST.get('next', '').strip() or request.GET.get('next', '').strip()
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return next_url
+    if active_snapshot_id:
+        return f"{reverse('core:quirofano_management')}?snapshot={active_snapshot_id}"
+    return reverse('core:quirofano_management')
+
+
+def _build_quirofano_whatsapp_batch(entries: list[QuirofanoEntry]) -> tuple[list[dict], list[str]]:
+    items: list[dict] = []
+    skipped: list[str] = []
+
+    for entry in entries:
+        raw_phone = entry.report_phone or (entry.app_patient.phone if entry.app_patient_id else '')
+        normalized_phone = _normalize_whatsapp_phone(raw_phone)
+        if not normalized_phone or len(normalized_phone) < 12:
+            skipped.append(entry.patient_name or f'Entrada {entry.pk}')
+            continue
+
+        items.append({
+            'entry_id': entry.pk,
+            'patient_name': entry.patient_name,
+            'phone': normalized_phone,
+            'raw_phone': raw_phone,
+            'message': build_patient_whatsapp_message(
+                entry.patient_name,
+                entry.surgery_date,
+                entry.doctor,
+            ),
+        })
+
+    return items, skipped
+
+
+def _build_public_url(request, path: str) -> str:
+    public_base_url = os.getenv("PANEL_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if public_base_url:
+        return f"{public_base_url}{path}"
+    return request.build_absolute_uri(path)
+
+
+def _resolve_anesthesia_pdf_path() -> Path | None:
+    configured_path = os.getenv("ANESTHESIA_PDF_PATH", "").strip()
+    if configured_path:
+        pdf_path = Path(configured_path)
+        if not pdf_path.is_absolute():
+            pdf_path = Path(settings.BASE_DIR) / pdf_path
+        return pdf_path if pdf_path.exists() and pdf_path.suffix.lower() == ".pdf" else None
+
+    pdf_dir = Path(settings.MEDIA_ROOT) / "anestesia"
+    if not pdf_dir.exists():
+        return None
+
+    pdf_files = sorted(
+        [path for path in pdf_dir.glob("*.pdf") if path.is_file()],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return pdf_files[0] if pdf_files else None
+
+
+def _build_media_url_for_file(request, file_path: Path) -> str | None:
+    try:
+        relative = file_path.resolve().relative_to(Path(settings.MEDIA_ROOT).resolve()).as_posix()
+    except ValueError:
+        return None
+    return _build_public_url(request, f"{settings.MEDIA_URL}{relative}")
+
+
+def _get_anesthesia_links_and_attachment(request) -> tuple[str, str | None, Path | None]:
+    pdf_path = _resolve_anesthesia_pdf_path()
+    pdf_url = _build_media_url_for_file(request, pdf_path) if pdf_path else None
+    info_url = os.getenv("ANESTHESIA_INFO_URL", "").strip() or pdf_url or ""
+    return info_url, pdf_url, pdf_path
+
+
+def _build_patient_tracking_whatsapp_message(request, patient: Patient) -> str:
+    tracking_path = f"{reverse('core:tracking')}?{urlencode({'id': patient.tracking_id})}"
+    tracking_url = _build_public_url(request, tracking_path)
+    anesthesia_info_url, anesthesia_pdf_url, _ = _get_anesthesia_links_and_attachment(request)
+    patient_name = (patient.full_name or "paciente").title()
+
+    lines = [
+        f"Hola {patient_name}.",
+        "",
+        "Recibimos correctamente su solicitud en Panel OVA.",
+        f"Codigo de seguimiento: {patient.tracking_id}",
+        f"Puede consultar el estado aca: {tracking_url}",
+    ]
+    if anesthesia_info_url:
+        lines.extend(["", f"Link de informacion de anestesia: {anesthesia_info_url}"])
+    has_pdf_attachment = bool(anesthesia_pdf_url)
+    if anesthesia_pdf_url and anesthesia_pdf_url != anesthesia_info_url:
+        lines.append(f"PDF de anestesia: {anesthesia_pdf_url}")
+    if has_pdf_attachment:
+        lines.extend(["", "Tambien le enviamos el PDF de anestesia adjunto en este chat."])
+    lines.extend(["", "Este mensaje es automatico. Ante dudas medicas o indicaciones particulares, siga lo informado por su equipo de salud."])
+    return "\n".join(lines)
+
+
+def _send_whatsapp_cloud_payload(payload: dict) -> bool:
+    phone_number_id = settings.WHATSAPP_CLOUD_PHONE_NUMBER_ID.strip()
+    access_token = settings.WHATSAPP_CLOUD_ACCESS_TOKEN.strip()
+    if not phone_number_id or not access_token:
+        logger.warning("WhatsApp Cloud API no configurado: falta PHONE_NUMBER_ID o ACCESS_TOKEN.")
+        return False
+
+    api_version = settings.WHATSAPP_CLOUD_API_VERSION.strip() or "v20.0"
+    url = f"https://graph.facebook.com/{api_version}/{phone_number_id}/messages"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=settings.WHATSAPP_CLOUD_TIMEOUT) as response:
+            body = response.read().decode("utf-8", errors="ignore")
+            logger.info("WhatsApp Cloud API OK: %s", body)
+            return 200 <= response.status < 300
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        logger.error("WhatsApp Cloud API HTTP %s: %s", exc.code, detail)
+    except Exception:
+        logger.exception("No se pudo enviar WhatsApp por Cloud API.")
+    return False
+
+
+def _build_whatsapp_template_payload(phone: str, request, patient: Patient, tracking_url: str, anesthesia_info_url: str, anesthesia_pdf_url: str | None) -> dict:
+    components = [
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "text": (patient.full_name or "Paciente").title()},
+                {"type": "text", "text": patient.tracking_id or "-"},
+                {"type": "text", "text": tracking_url},
+                {"type": "text", "text": anesthesia_info_url or (anesthesia_pdf_url or "-")},
+            ],
+        }
+    ]
+    return {
+        "messaging_product": "whatsapp",
+        "to": phone,
+        "type": "template",
+        "template": {
+            "name": settings.WHATSAPP_TRACKING_TEMPLATE_NAME.strip(),
+            "language": {"code": settings.WHATSAPP_TRACKING_TEMPLATE_LANGUAGE.strip() or "es_AR"},
+            "components": components,
+        },
+    }
+
+
+def _send_patient_tracking_whatsapp(request, patient: Patient) -> bool:
+    phone = _normalize_whatsapp_phone(patient.phone)
+    if not phone:
+        logger.info("No se envia WhatsApp de tracking: paciente %s sin telefono valido.", patient.pk)
+        return False
+
+    tracking_path = f"{reverse('core:tracking')}?{urlencode({'id': patient.tracking_id})}"
+    tracking_url = _build_public_url(request, tracking_path)
+    anesthesia_info_url, anesthesia_pdf_url, _ = _get_anesthesia_links_and_attachment(request)
+
+    sent_any = False
+    if settings.WHATSAPP_TRACKING_TEMPLATE_NAME.strip():
+        sent_any = _send_whatsapp_cloud_payload(
+            _build_whatsapp_template_payload(
+                phone=phone,
+                request=request,
+                patient=patient,
+                tracking_url=tracking_url,
+                anesthesia_info_url=anesthesia_info_url,
+                anesthesia_pdf_url=anesthesia_pdf_url,
+            )
+        )
+    else:
+        text_payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": phone,
+            "type": "text",
+            "text": {
+                "preview_url": True,
+                "body": _build_patient_tracking_whatsapp_message(request, patient),
+            },
+        }
+        sent_any = _send_whatsapp_cloud_payload(text_payload)
+
+    if anesthesia_pdf_url:
+        document_payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": phone,
+            "type": "document",
+            "document": {
+                "link": anesthesia_pdf_url,
+                "filename": Path(anesthesia_pdf_url).name or "anestesia.pdf",
+                "caption": f"PDF de anestesia - Tracking {patient.tracking_id}",
+            },
+        }
+        sent_any = _send_whatsapp_cloud_payload(document_payload) or sent_any
+
+    return sent_any
+
+
+def _queue_patient_tracking_whatsapp(request, patient: Patient) -> bool:
+    """Compatibilidad con el flujo existente: ahora envia por API, sin navegador ni QR."""
+    return _send_patient_tracking_whatsapp(request, patient)
+
+
+def _build_patient_tracking_email(request, patient: Patient) -> tuple[str, str, Path | None]:
+    tracking_path = f"{reverse('core:tracking')}?{urlencode({'id': patient.tracking_id})}"
+    tracking_url = _build_public_url(request, tracking_path)
+    anesthesia_info_url, anesthesia_pdf_url, anesthesia_pdf_path = _get_anesthesia_links_and_attachment(request)
+    patient_name = (patient.full_name or "paciente").title()
+
+    tracking_home_url = _build_public_url(request, reverse('core:tracking'))
+
+    subject = f"CEMIC - Solicitud recibida y seguimiento {patient.tracking_id}"
+    lines = [
+        f"Estimado/a {patient_name}:",
+        "",
+        "Recibimos correctamente la documentacion cargada en la Oficina Virtual de Autorizaciones de CEMIC.",
+        "A partir de ahora puede seguir el estado de su solicitud con el codigo informado debajo.",
+        "",
+        f"Codigo de seguimiento: {patient.tracking_id}",
+        f"Link directo de seguimiento: {tracking_url}",
+        f"Tambien puede ingresar a {tracking_home_url} y colocar su codigo de seguimiento.",
+    ]
+    if anesthesia_info_url:
+        lines.extend([
+            "",
+            "Dudas frecuentes sobre anestesia:",
+            anesthesia_info_url,
+        ])
+    if anesthesia_pdf_path:
+        lines.extend([
+            "",
+            "Adjuntamos a este correo el consentimiento de anestesia.",
+            "Por favor, lealo con atencion antes de la intervencion. La firma del consentimiento se realizara el dia de la intervencion segun las indicaciones del equipo asistencial.",
+        ])
+    lines.extend([
+        "",
+        "Este mensaje es automatico. No responda este correo.",
+        "Ante dudas medicas o indicaciones particulares, siga siempre lo informado por su equipo de salud.",
+        "",
+        "Oficina Virtual de Autorizaciones",
+        "CEMIC",
+    ])
+    return subject, "\n".join(lines), anesthesia_pdf_path
+
+
+def _send_patient_tracking_email(request, patient: Patient) -> bool:
+    recipient = (patient.email or "").strip()
+    if not recipient:
+        logger.info("No se envia mail de tracking: paciente %s sin email.", patient.pk)
+        return False
+
+    subject, body, anesthesia_pdf_path = _build_patient_tracking_email(request, patient)
+    from_email = (
+        getattr(settings, "PATIENT_TRACKING_FROM_EMAIL", "")
+        or settings.DEFAULT_FROM_EMAIL
+        or "oficinavirtualdeautorizaciones@cemic.edu.ar"
+    )
+    email_message = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=from_email,
+        to=[recipient],
+    )
+    if anesthesia_pdf_path and anesthesia_pdf_path.exists():
+        email_message.attach_file(str(anesthesia_pdf_path))
+
+    try:
+        sent_count = email_message.send(fail_silently=False)
+        logger.info("Mail de tracking enviado a paciente %s: %s", patient.pk, recipient)
+        return sent_count > 0
+    except Exception:
+        logger.exception("No se pudo enviar mail de tracking a paciente %s.", patient.pk)
+        return False
+
+
+def _build_patient_authorized_email(request, patient: Patient) -> tuple[str, str]:
+    tracking_path = f"{reverse('core:tracking')}?{urlencode({'id': patient.tracking_id})}"
+    tracking_url = _build_public_url(request, tracking_path)
+    patient_name = (patient.full_name or "paciente").title()
+    surgery_date = patient.planned_date.strftime("%d/%m/%Y") if patient.planned_date else "A confirmar"
+    doctor = (patient.doctor or "A confirmar").title()
+
+    subject = "CEMIC - Su cirugia se encuentra autorizada"
+    lines = [
+        f"Estimado/a {patient_name}:",
+        "",
+        "Le informamos desde la Oficina Virtual de Autorizaciones de CEMIC que la autorizacion de su cirugia se encuentra aprobada.",
+        "",
+        f"Fecha probable de intervencion: {surgery_date}",
+        f"Medico: {doctor}",
+        f"Codigo de seguimiento: {patient.tracking_id}",
+        "",
+        f"Puede consultar el estado actualizado aca: {tracking_url}",
+        "",
+        "Este mensaje es automatico. No responda este correo.",
+        "Ante dudas medicas o indicaciones particulares, siga siempre lo informado por su equipo de salud.",
+        "",
+        "Oficina Virtual de Autorizaciones",
+        "CEMIC",
+    ]
+    return subject, "\n".join(lines)
+
+
+def _send_patient_authorized_email(request, patient: Patient) -> bool:
+    recipient = (patient.email or "").strip()
+    if not recipient:
+        logger.info("No se envia mail de autorizacion: paciente %s sin email.", patient.pk)
+        return False
+
+    subject, body = _build_patient_authorized_email(request, patient)
+    from_email = (
+        getattr(settings, "PATIENT_TRACKING_FROM_EMAIL", "")
+        or settings.DEFAULT_FROM_EMAIL
+        or "oficinavirtualdeautorizaciones@cemic.edu.ar"
+    )
+    email_message = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=from_email,
+        to=[recipient],
+    )
+
+    try:
+        sent_count = email_message.send(fail_silently=False)
+        logger.info("Mail de autorizacion enviado a paciente %s: %s", patient.pk, recipient)
+        return sent_count > 0
+    except Exception:
+        logger.exception("No se pudo enviar mail de autorizacion a paciente %s.", patient.pk)
+        return False
+
+
+def _legacy_patient_tracking_whatsapp_batch_payload(request, patient: Patient) -> dict:
+    """Referencia inactiva del formato anterior de lote. No se usa para pacientes QR."""
+    return {
+        "created_at": timezone.localtime().isoformat(),
+        "source": "qr_patient_create",
+        "items": [
+            {
+                "entry_id": patient.pk,
+                "patient_name": patient.full_name,
+                "phone": _normalize_whatsapp_phone(patient.phone),
+                "message": _build_patient_tracking_whatsapp_message(request, patient),
+            }
+        ],
+    }
+
 # -------------------------------------------------------------
 # LISTAS (servicios, médicos, coberturas)
 # -------------------------------------------------------------
@@ -55,20 +491,25 @@ def _normalized_expr(field_name: str):
     """
     expr = Lower(F(field_name))
     mapping = [
-        ("á", "a"), ("à", "a"), ("ä", "a"), ("â", "a"), ("ã", "a"),
-        ("Á", "a"), ("À", "a"), ("Ä", "a"), ("Â", "a"), ("Ã", "a"),
-        ("é", "e"), ("è", "e"), ("ë", "e"), ("ê", "e"),
-        ("É", "e"), ("È", "e"), ("Ë", "e"), ("Ê", "e"),
-        ("í", "i"), ("ì", "i"), ("ï", "i"), ("î", "i"),
-        ("Í", "i"), ("Ì", "i"), ("Ï", "i"), ("Î", "i"),
-        ("ó", "o"), ("ò", "o"), ("ö", "o"), ("ô", "o"), ("õ", "o"),
-        ("Ó", "o"), ("Ò", "o"), ("Ö", "o"), ("Ô", "o"), ("Õ", "o"),
-        ("ú", "u"), ("ù", "u"), ("ü", "u"), ("û", "u"),
-        ("Ú", "u"), ("Ù", "u"), ("Ü", "u"), ("Û", "u"),
-        ("ñ", "n"), ("Ñ", "n"),
-        ("ç", "c"), ("Ç", "c"),
+        ("áàäâãÁÀÄÂÃ", "a"),
+        ("éèëêÉÈËÊ", "e"),
+        ("íìïîÍÌÏÎ", "i"),
+        ("óòöôõÓÒÖÔÕ", "o"),
+        ("úùüûÚÙÜÛ", "u"),
+        ("ñÑ", "n"),
+        ("çÇ", "c"),
     ]
-    for src, dst in mapping:
+    expanded_mapping = []
+    for chars, dst in mapping:
+        for src in chars:
+            expanded_mapping.append((src, dst))
+            for encoding in ("latin1", "cp1252"):
+                try:
+                    mojibake = src.encode("utf-8").decode(encoding)
+                except UnicodeError:
+                    continue
+                expanded_mapping.append((mojibake, dst))
+    for src, dst in expanded_mapping:
         expr = Replace(expr, Value(src), Value(dst))
     return expr
 
@@ -107,6 +548,17 @@ ADMISSION_EMAILS_BY_SEDE = {
     Patient.SEDE_POMBO: "admisionpombo@cemic.edu.ar",
 }
 
+ADMISSION_CC_EMAILS_BY_SEDE = {
+    Patient.SEDE_SAAVEDRA: [
+        "ccastillo@cemic.edu.ar",
+        "etournie@cemic.edu.ar",
+    ],
+    Patient.SEDE_POMBO: [
+        "bambrosini@cemic.edu.ar",
+        "pgerenciados@cemic.edu.ar",
+    ],
+}
+
 ADMISSION_REQUIRED_ATTACHMENT_TYPES = (
     Attachment.TYPE_ORDEN,
     Attachment.TYPE_AUTORIZACION,
@@ -115,6 +567,8 @@ ADMISSION_REQUIRED_ATTACHMENT_TYPES = (
 ADMISSION_OPTIONAL_ATTACHMENT_TYPES = (
     Attachment.TYPE_MATERIALES,
 )
+
+ADMISSION_MAX_TOTAL_ATTACHMENT_BYTES = 18 * 1024 * 1024
 
 ADMISSION_ATTACHMENT_LABELS = {
     Attachment.TYPE_ORDEN: "Orden de intervención",
@@ -125,6 +579,10 @@ ADMISSION_ATTACHMENT_LABELS = {
 
 def _get_admission_email_for_sede(sede: str | None) -> str:
     return ADMISSION_EMAILS_BY_SEDE.get((sede or "").strip().upper(), "")
+
+
+def _get_admission_cc_emails_for_sede(sede: str | None) -> list[str]:
+    return ADMISSION_CC_EMAILS_BY_SEDE.get((sede or "").strip().upper(), [])
 
 
 def _get_patient_admission_attachments(patient: Patient):
@@ -148,8 +606,24 @@ def _get_patient_admission_attachments(patient: Patient):
     return selected_attachments, missing_labels
 
 
+def _get_admission_attachments_total_bytes(attachments: list[Attachment]) -> int:
+    total_bytes = 0
+    for attachment in attachments:
+        if not attachment.file:
+            continue
+        try:
+            total_bytes += attachment.file.size
+        except Exception:
+            try:
+                total_bytes += os.path.getsize(attachment.file.path)
+            except Exception:
+                continue
+    return total_bytes
+
+
 def _send_patient_admission_email(request, patient: Patient) -> tuple[str, list[Attachment]]:
     recipient = _get_admission_email_for_sede(patient.sede)
+    cc_recipients = _get_admission_cc_emails_for_sede(patient.sede)
     if not recipient:
         raise ValueError("El paciente no tiene una sede válida para enviar a admisión.")
 
@@ -157,8 +631,19 @@ def _send_patient_admission_email(request, patient: Patient) -> tuple[str, list[
     if missing_labels:
         raise ValueError(f"Faltan adjuntos obligatorios: {', '.join(missing_labels)}.")
 
-    if settings.EMAIL_BACKEND.endswith("smtp.EmailBackend") and not (settings.EMAIL_HOST or "").strip():
-        raise ValueError("El envío por mail no está configurado en el servidor. Falta EMAIL_HOST.")
+    total_attachment_bytes = _get_admission_attachments_total_bytes(attachments)
+    if total_attachment_bytes > ADMISSION_MAX_TOTAL_ATTACHMENT_BYTES:
+        total_mb = total_attachment_bytes / (1024 * 1024)
+        max_mb = ADMISSION_MAX_TOTAL_ATTACHMENT_BYTES / (1024 * 1024)
+        raise ValueError(
+            "Los adjuntos superan el tamaño máximo permitido para enviar por mail. "
+            f"Total actual: {total_mb:.1f} MB. Máximo permitido: {max_mb:.0f} MB."
+        )
+
+    admission_backend = settings.ADMISSION_EMAIL_BACKEND
+    admission_host = (settings.ADMISSION_EMAIL_HOST or "").strip()
+    if admission_backend.endswith("smtp.EmailBackend") and not admission_host:
+        raise ValueError("El envío por mail a admisión no está configurado en el servidor. Falta ADMISSION_EMAIL_HOST o EMAIL_HOST.")
 
     surgery_date = patient.planned_date.strftime("%d/%m/%Y") if patient.planned_date else "Sin fecha"
     surgery_time = patient.surgery_time.strftime("%H:%M") if patient.surgery_time else "A confirmar"
@@ -197,8 +682,9 @@ def _send_patient_admission_email(request, patient: Patient) -> tuple[str, list[
     email_message = EmailMessage(
         subject=f"Panel OVA | Documentación admisión | {patient.full_name} | {sede_label}",
         body="\n".join(body_lines),
-        from_email=settings.DEFAULT_FROM_EMAIL,
+        from_email=settings.ADMISSION_DEFAULT_FROM_EMAIL,
         to=[recipient],
+        cc=cc_recipients,
         reply_to=[request.user.email] if request.user.email else None,
     )
 
@@ -207,7 +693,28 @@ def _send_patient_admission_email(request, patient: Patient) -> tuple[str, list[
             continue
         email_message.attach_file(attachment.file.path)
 
-    sent_count = email_message.send(fail_silently=False)
+    def _deliver_admission_email() -> int:
+        email_connection = get_connection(
+            backend=admission_backend,
+            host=settings.ADMISSION_EMAIL_HOST,
+            port=settings.ADMISSION_EMAIL_PORT,
+            username=settings.ADMISSION_EMAIL_HOST_USER,
+            password=settings.ADMISSION_EMAIL_HOST_PASSWORD,
+            use_tls=settings.ADMISSION_EMAIL_USE_TLS,
+            use_ssl=settings.ADMISSION_EMAIL_USE_SSL,
+            timeout=settings.ADMISSION_EMAIL_TIMEOUT,
+        )
+        try:
+            email_connection.open()
+            return email_connection.send_messages([email_message])
+        finally:
+            email_connection.close()
+
+    try:
+        sent_count = _deliver_admission_email()
+    except smtplib.SMTPServerDisconnected:
+        sent_count = _deliver_admission_email()
+
     if not sent_count:
         raise ValueError("El servidor no confirmó el envío del mail.")
 
@@ -215,6 +722,12 @@ def _send_patient_admission_email(request, patient: Patient) -> tuple[str, list[
 
 
 def _format_admission_email_error(exc: Exception) -> str:
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        return (
+            "La conexión con el servidor de mail se cortó antes de completar el envío. "
+            "Se reintentó automáticamente, pero el servidor volvió a cerrar la sesión."
+        )
+
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         smtp_host = (settings.EMAIL_HOST or "").strip().lower()
         error_detail = ""
@@ -249,181 +762,209 @@ SERVICIOS_QR = [
     'OFTALMOLOGIA',
     'PEDIATRIA',
     'GINECOLOGIA Y OBSTETRICIA',
+    'SERVICIO DE ODONTOLOGIA',
 ]
 
 MEDICOS_QR = [
-    # TRAUMATOLOGIA
-    'ABALO EDUARDO',
-    'ADROGUE LUIS',
-    'BARBIERI PABLO',
-    'CARRIZO JUAN',
-    'CHAVEZ ARIEL',
-    'CONSTANZA EDUARDO',
-    'CORDOBA ALEJANDRA',
-    'DE ZAVALIA MAXIMO',
-    'DEIMUNDO MARCOS',
-    'DEVOTO MATIAS',
-    'DI RADO LEANDRO', 
-    'GOBBI ENRIQUE',
-    'GRANDOLI FERNANDO',
-    'IGLESIAS ALEJANDRO',
-    'MALLEA ANDRES',
-    'MENINATO MARCOS',
-    'MOUNIER CARLOS',
-    'ORTIZ EZEQUIEL',
-    'PEREA AGUSTIN',
-    'PINOTTI NORBERTO',
-    'PEREYRA LEONARDO',
-    'SANNA HERNAN',
-    'SERE IGNACIO',
-    'TORGA SPAK ROGER',
-    'VALENTINI ROBERTO',
-    'VILLA NATALIA',
-    'YAVEN IGNACIO',
-    'YEREGUI SANTIAGO',
-    'RONCORONI',
-    'TRONCOSO IGNACIO',
-    # HEMODINAMIA
-    'BELDI FLORENCIA',
-    'BOCHOEYER ANDRES',
-    'CAROSELLA LUCILA',
-    'D ALESANDRO CIRO',
-    'DE CANDIDO LAURA',
-    'DI TORO DARIO',
-    'GARBUGINO SILVIA',
-    'HADID CLAUDIO',
-    'HERRERA VEGAS DIEGO',
-    'LABADET CARLOS',
-    'LABADET SEBASTIAN',
-    'LUCINI VICTORIO',
-    'MAFFEO HORACIO',
-    'MALDONADO',
-    'MAYDANA MARTIN',
-    'MENGO GUSTAVO',
-    'RIVAROLA MARCELO',
-    'SALVADORES PABLO',
-    'SAYAVEDRA RAMIRO',
-    'SIMONELLI DAMIAN',
-    'TAMASHIRO GUSTAVO',
-    'TRENTACOSTE LUIS',
-    'VEGA PABLO',
-    'VILLAR DIEGO',
-
-    # UROLOGIA
-    'ANGELONI, BRUNO GABRIEL',
-    'BALDESSARI, CARLOS MARTIN',
-    'CAPIEL, LEANDRO',
-    'COLLAVINI, MARTIN GABRIEL',
-    'FERNANDEZ SPONTON, LUIS HUMBERTO',
-    'FERNANDEZ, HECTOR',
-    'FINKELSTEIN, JONATHAN EZEQUIEL',
-    'GONZALEZ, VICTORIA SOLEDAD',
-    'GRADIN, SAMUEL',
-    'GREGORIO BERUTI, MANUEL',
-    'KOREN, GUIDO',
-    'LACORAZZA, DARIO',
-    'MARRUGAT, MARCOS JOSE',
-    'MARRUGAT, RODOLFO EMILIO',
-    'MONTENEGRO, LUIS CARLOS',
-    'PERCOVICH, FEDERICO',
-    'RICHARDS, NICOLAS',
-    'RICHARDS, TOMAS',
-    'RODRIGUEZ OLIVIERI, MANUELA',
-    'ROVEGNO, AGUSTIN ROBERTO',
-
-    # CIRUGIA GENERAL
-    'CARRIE',
-    'CLEMENTE',
-    'LANCELOTTI',
-    'PICCININI',
-    'SALGADO',
-    'SIMONELLI',
-    'SOLINAS',
-    'VERACIERTO',
-    'ZUND SANTIAGO',
-    'AVELLANEDA NICOLAS',
-    'BARRERA DARIO',
-
-    # CIRUGIA TORACICA
-    'NAZAR PEIRANO AGUSTIN',
-    'VIOLA AGUSTIN JAVIER',
-
-    # CIRUGIA PLASTICA
-    'BISTOLETTI PEDRO',
-    'MARENZI GUSTAVO',
-    'BIGNOTTI AGUSTIN',
-    'RODRIGO JIMENA',
-    'MIRO ANTONIO',
-    'BARDOT GONZALO',
-    'BARREIRO CATALINA',
-    'STOPPINI MAXIMILIANO',
-	
-    # CIRUGIA OTORRINO',
-    'NEMECIO ALAN',
-    'BLANC ARIANA',
-    'VALDEZ GABRIEL ANIBAL',
-    'RAMIREZ ZAIDA',
-    'GONZALEZ ARECES MARIELA ALEJANDRA',
-    'BERMUDEZ ARIEL LEONARDO',
-    'VITI MARIA MARTA',
-    'MAZZEI PAULA CECILIA',
-    'ARMIJOS KARLA',
-    'MICHALSKI DIEGO JULIAN',
-    'LOPEZ MORIS CARLOS BENJAMIN',
-    'SARTORI MARIA VERONICA',
-    'MUSACCHIO CECILIA',
-    'MARENGO RICARDO LUIS',
-    'VALERIO ANDREA',
-    'SZTAJN MARCELO',
-    'EISEMBERG GULLERMO DANIEL',
-    'FERNANDEZ LUCIA',
-    'JUCHLI MARIANA LIA',
-    'GATICA VERONICA DEL ROSARIO',
-    'NISTAL CLARA',
-    'CURI JUAN RAMON',
-    'FARAGO ESTEBAN',
-    'DOMEG MARIA BELEN',
-
-     # CIRUGIA NEURO',
-    'GUEVARA MENDEZ MARTIN',
-    'DRIOLLET SANTIAGO',
-    'MELGAREJO ANA',
-
-    # CIRUGIA FLEBOLOGIA',
-    'DE TOMMASO GONZALO',
-
-    # GINECOLOGIA
-    'CRIMI GABRIEL',
-    'ANTONIAZZI SAMANTA',
-    'BALLESTER ANGELES',
-    'BOLOGNA MICAELA',
-    'FERNANDEZ ALBERTO',
-    'BAUMESITER GUSTAVO',
-    'DIRIBARNE JUAN CRUZ',
-    'EHRMAN PATRICIO',
-    'FISHKEL VANINA',
-    'MONGE FERNANDO',
-    'SCHYGIEL GUADALUPE',
-    'PAESANI FERNANDO',
-    'KIENAST NATALIA',
-    'QUINTAIE AGUSTIN',
-    'SCHVARTZMAN JAVIER',
-    'SEREDAY PAUL',
-    'TAPPER KAREN ELIZABETH',
-    'CAERO ROMINA',
-    'VERA JULIETA',
-    'VIZCAINO FRANCISCO',
-    'VON STECHER FRANCISCO',
-    'ZEFF NATALIA',
-    'ZUGASTI JULIA',
-    'TRIGUBO DENISE',
-    'PEREIRA JUAN IGNACIO',
-    'TRUFFINI LUCIANA',
-    'NEGRI MERCEDES',
-
-    
+    "ABALO EDUARDO DIEGO",
+    "ABALO EDUARDO RUDECINDO",
+    "ACOSTA GUEMES LUCIANA",
+    "ACOSTA JORGE EDUARDO PATRICIO",
+    "ADROGUE LUIS MARTIN",
+    "ALEJANDRO DAVID PINTO MOLINA",
+    "ALTUVE IGNACIO",
+    "ANTONIAZZI SAMANTA",
+    "ARMIJOS KARLA",
+    "AVELLANEDA NICOLAS LUIS",
+    "BALDESSARI MARTIN",
+    "BALESTRINI JULIAN",
+    "BALLESTER ANGELES",
+    "BARBIERI PABLO GASTON",
+    "BARDOT GONZALO",
+    "BARREIRO CATALINA",
+    "BARRERA DARIO",
+    "BARRIENTOS CATALINA",
+    "BARTULUCCHI MARCELO",
+    "BAUMEISTER GUSTAVO",	
+    "BELDI MARIA FLORENCIA",
+    "BERMUDEZ ARIEL LEONARDO",
+    "BIGNON RAUL HORACIO",
+    "BIGNOTTI JOSE AGUSTIN",
+    "BISTOLETTI PEDRO HORACIO",
+    "BLANC ARIANA",
+    "BOLOGNA MICAELA",
+    "BORRE BRENDA",
+    "CABEDALE JIMENA",
+    "CAERO ROMINA ALEJANDRA",
+    "CANO RODRIGO",
+    "CANTISANI RAFAEL",
+    "CAPIEL LEANDRO",
+    "CARRIE AUGUSTO JAVIER",
+    "CARRIZO GONZALEZ JUAN ALBERTO",
+    "CASARETTO JUAN",
+    "CAVEDALE JIMENA",
+    "CHAVES LEANDRO",
+    "CHAVEZ ARIEL",
+    "CILLA ELIANA GISELA",
+    "CLEMENTE OCHOTECO GASTON ALFREDO",
+    "CORDERO HERNAN",
+    "CORDOBA MARIA ALEJANDRA",
+    "COSTANZA EDUARDO",
+    "CRIMI GABRIEL ALFREDO",
+    "DE TOMMASO GONZALO",
+    "DE ZAVALIA MAXIMO",
+    "DEIMUNDO MARCOS",
+    "DELLO RUSSO",
+    "DEVOTO ANABELLA",
+    "DEVOTO MATIAS ALEJANDRO",
+    "DI RADO LEANDRO",
+    "DIANA PEREZ",
+    "FARACE TSARDIKOS DIMITRA",
+    "DIRIBARNE JUAN CRUZ",
+    "DOMEG MARIA BELEN",
+    "DOMINGUEZ JULIETA",
+    "DRIOLLET LASPIUR SANTIAGO",
+    "EHRMAN PATRICIO",
+    "ETCHEVERRY IGNACIO ALFREDO",
+    "ETCHEVERRY TOMAS",
+    "EISEMBERG GUILLERMO DANIEL",
+    "FARAGO ESTEBAN",
+    "FERNANDEZ JOSE ALBERTO",
+    "FERNANDEZ LUCIA",
+    "FERNANDEZ SASSO EZEQUIEL",
+    "FINKELSTEIN JONATHAN",
+    "FISHKEL VANINA",
+    "FLORES LEVALLE",
+    "GARBUGINO DE NORMANDI SILVIA",
+    "GOBBI ENRIQUE AUGUSTO",
+    "GODOY MACARENA",
+    "GOLIAN IGNACIO",
+    "GONZALEZ ARECES MARIELA ALEJANDRA",
+    "GRADIN SAMUEL",
+    "GRANDOLI FERNANDO M.",
+    "GRUN ALEJANDRO DANIEL",
+    "GRYNBLAT PEDRO SILVIO",
+    "GUEVARA MENDEZ MARTIN",
+    "HERRERA VEGAS DIEGO JORGE",
+    "HURTADO NICOLE",
+    "IGLESIAS GONZALEZ ALEJANDRO ABEL",
+    "KIENAST NATALIA",
+    "KLINGER DANIEL",
+    "KOREN GUIDO",
+    "KRUPITZKI HUGO",
+    "LABADET CARLOS DAVID",
+    "LACORAZZA DARIO",
+    "LANCELOTTI TOMAS",
+    "LARIGUET INES",
+    "LEGUIZAMON GUSTAVO",
+    "LOPEZ MORIS CARLOS BENJAMIN",
+    "MAFFEO HORACIO",
+    "MALLEA ANDRES",
+    "MARENGO RICARDO LUIS",
+    "MARENZI GUSTAVO JUAN",
+    "MARRUGAT MARCOS",
+    "MARRUGAT RODOLFO EMILIO",
+    "MASKIN LUIS PATRICIO",
+    "MELGAREJO ANA BELEN",
+    "MENA AGUSTINA",
+    "MENDEZ GRACIELA",
+    "MENGO GUSTAVO EDUARDO",
+    "MENINATO MARCOS",
+    "MICHALSKI DIEGO JULIAN",
+    "MONGE FERNANDO CARLOS",
+    "MOSNA LEANDRO",
+    "MOUNIER CARLOS",
+    "MOURAS PABLO",
+    "MUSACCHIO CECILIA",
+    "NANA MARIANA",
+    "NAPOLITANO MILENA",
+    "NAVARRO JUAN",
+    "NAZAR PEIRANO MAXIMILIANO",
+    "NEGRI MERCEDES",
+    "NEMECIO ALAN",
+    "NISTAL CLARA",
+    "ORTIZ EZEQUIEL",
+    "PAESANI FERNANDO",
+    "PAGANINI RAUL",
+    "PAOLINI JULIETA",
+    "PAUL NICOLAS CARLOS",
+    "PERALTA ANGEL DANIEL",
+    "PEREA AGUSTIN OSCAR",
+    "PEREIRA JUAN IGNACIO",
+    "PIANTONI LUCAS",
+    "PICCININI PABLO",
+    "PICCOLETTI LAURA",
+    "PODESTA MIGUEL",
+    "POMBO LUIS",
+    "POTOLICCHIO ANALIA",
+    "POZZONI CARLOS",
+    "PRODAN SILVANA",
+    "QUINTAIE AGUSTIN",
+    "QUIROZ",
+    "RABINOVICH FERNANDO",
+    "RAMIL VERONICA",
+    "RAMIREZ GUTIERREZ DANIELA",
+    "RAMIREZ ZAIDA",
+    "RICHARDS NICOLAS",
+    "RICHARDS TOMAS",
+    "RIOLFI NAZARENO",
+    "RIOS MATIAS NICOLAS",
+    "RIVAROLA MARCELO DAMIAN",
+    "RODRIGO JIMENA MARIA DEL PILAR",
+    "RODRIGUEZ JORGE",
+    "RODRIGUEZ OLIVIERI MANUELA",
+    "RODRIGUEZ PABLO OSCAR",
+    "RONCORONI",
+    "ROUAUX GUILLERMINA",
+    "ROVEGNO AGUSTIN ROBERTO",
+    "ROVEGNO FEDERICO AGUSTIN",
+    "SALGADO ROBERTO",
+    "SALVADORES MARTINEZ PABLO JAVIER",
+    "SANCHEZ NICOLAS",
+    "SANNA HERNAN",
+    "SARTORI MARIA VERONICA",
+    "SCHLICHTER ANDRES",
+    "SCHWARTZMAN JAVIER",
+    "SCHYGIEL GUADALUPE",
+    "SERE IGNACIO ALFREDO",
+    "SEREDAY PAUL",
+    "SIMONELLI DAMIAN ARTURO JAVIER",
+    "SOLINAS DAVID",
+    "SPONTON LUIS",
+    "STOPPINI GALLAGHER MAXIMILIANO JOSE",
+    "SUAREZ JACKELINE",
+    "SZTAJN MARCELO",
+    "TABOADA SUSANA",
+    "TORGA SPAK ROGER PATRICK",
+    "TRIGUBO DENISE",
+    "TRONCOSO IGNACIO",
+    "TRUFFINI LUCIANA",
+    "TRENTADUE AGUSTIN",
+    "VALDEZ GABRIEL ANIBAL",
+    "VALENTINI ROBERTO RAUL",
+    "VALERIO ANDREA",
+    "VACCAREZZA HERNAN",
+    "VEGA PABLO",
+    "VERA JULIETA",
+    "VERACIERTO FEDERICO",
+    "VILLA NATALIA ANDREA",
+    "VIOLA AGUSTIN",
+    "VITI MARIA MARTA",
+    "VIZCAINO ALDO NORBERTO",
+    "VIZCAINO FRANCISCO",
+    "VON STECHER FRANCISCO",
+    "WEIL ANTONELLA",
+    "YAVEN IGNACIO ALEJANDRO",
+    "YEREGUI SANTIAGO",
+    "ZAMPEDRI ANA",
+    "ZEFF NATALIA PAULA",
+    "ZUCCARO GRACIELA NOEMI",
+    "ZUGASTI JULIA",
+    "ZUND SANTIAGO",
      
 ]
+
+DOCTOR_OTRO_QR = 'OTROS'
  
 COBERTURAS_QR = [
     'ACADEMIA NACIONAL DE MEDICINA',
@@ -462,20 +1003,24 @@ COBERTURAS_QR = [
     'MEDIPREMIUM',
     'MUTUAL FEDERADA 25 DE JUNIO',
     'NEFRA',
-    'O.S.D.I.P.P.',
     'OBSBA',
     'OMINT',
     'OPDEA',
+    'OSADEF',
     'OSDE',
     'OSME',
+    'OSMITA',
     'OSPE',
     'OSPIDA',
     'OSPOCE',
     'OSRJA',
+    'OSFATUN',  
     'PATRONES DE CABOTAJE',
+    'PRIVADO',
     'PODER JUDICIAL', 
     'PREMEDIC',
     'PREVENCION SALUD',
+    'PRIVADO',
     'RED PRESTACIONAL CASA',
     'RED ARGENTINA DE SALUD',
     'ROI',
@@ -494,46 +1039,71 @@ def qr_patient_create(request):
         first_name = request.POST.get('first_name', '').strip()
         full_name = ' '.join(part for part in [last_name, first_name] if part)
         dni = request.POST.get('dni', '').strip()
+        dni_digits = re.sub(r'\D+', '', dni)
         phone = request.POST.get('phone', '').strip()
         email = request.POST.get('email', '').strip()
         coverage = request.POST.get('coverage', '').strip()
-        doctor = request.POST.get('doctor', '').strip()
+        selected_doctor = request.POST.get('doctor', '').strip()
+        custom_doctor = request.POST.get('other_doctor', '').strip()
+        doctor = custom_doctor if selected_doctor == DOCTOR_OTRO_QR else selected_doctor
         service = request.POST.get('service', '').strip()
         planned_date_raw = request.POST.get('planned_date')
         sede = request.POST.get('sede', '').strip()
         external_observations = request.POST.get('external_observations', '').strip()
-        material_status = request.POST.get('material_status', 'PENDIENTE').strip()
-        en_quirofano = bool(request.POST.get('en_quirofano'))
-        observaciones_calendario = request.POST.get('observaciones_calendario', '').strip()
-
         # Validar campos obligatorios
         errors = []
+        field_errors = defaultdict(list)
+
+        def add_error(field, message):
+            errors.append(message)
+            field_errors[field].append(message)
         if not last_name:
-            errors.append('El apellido es obligatorio')
+            add_error('last_name', 'El apellido es obligatorio.')
         if not first_name:
-            errors.append('El nombre es obligatorio')
+            add_error('first_name', 'El nombre es obligatorio.')
         if not dni:
-            errors.append('El DNI es obligatorio')
+            add_error('dni', 'El DNI es obligatorio.')
+        elif not re.match(r'^[\d\s\.\-]+$', dni) or not re.match(r'^\d{7,8}$', dni_digits):
+            add_error('dni', 'El DNI debe tener 7 u 8 numeros. Puede escribirlo con puntos o guiones.')
+        if not email:
+            add_error('email', 'El correo electronico es obligatorio para enviar el seguimiento.')
+        else:
+            try:
+                validate_email(email)
+            except ValidationError:
+                add_error('email', 'Ingrese un correo electronico valido.')
         if not coverage:
-            errors.append('La cobertura es obligatoria')
-        if not doctor:
-            errors.append('El médico tratante es obligatorio')
+            add_error('coverage', 'La cobertura es obligatoria.')
+        elif coverage not in COBERTURAS_QR:
+            add_error('coverage', 'La cobertura seleccionada no es valida. Elija una opcion de la lista.')
+        if not selected_doctor:
+            add_error('doctor', 'El medico tratante es obligatorio.')
+        elif selected_doctor == DOCTOR_OTRO_QR:
+            if not custom_doctor:
+                add_error('other_doctor', 'Debe ingresar el nombre del medico.')
+            else:
+                doctor = custom_doctor.upper()
+        elif selected_doctor not in MEDICOS_QR:
+            add_error('doctor', 'El medico seleccionado no es valido. Elija una opcion de la lista.')
         if not service:
-            errors.append('El servicio es obligatorio')
+            add_error('service', 'El servicio es obligatorio.')
+        elif service not in SERVICIOS_QR:
+            add_error('service', 'El servicio seleccionado no es valido. Elija una opcion de la lista.')
         if not planned_date_raw:
-            errors.append('La fecha de intervención es obligatoria')
+            add_error('planned_date', 'La fecha probable de intervencion es obligatoria.')
         
         # Validar archivos obligatorios
         if not request.FILES.get('dni_file'):
-            errors.append('El archivo de DNI es obligatorio')
+            add_error('dni_file', 'Falta subir el archivo de DNI.')
         if not request.FILES.get('credencial_file'):
-            errors.append('El archivo de credencial es obligatorio')
+            add_error('credencial_file', 'Falta subir la credencial de cobertura.')
         if not request.FILES.get('orden_intervencion_file'):
-            errors.append('La orden de intervención es obligatoria')
+            add_error('orden_intervencion_file', 'Falta subir la orden de intervencion.')
         
         if errors:
             return render(request, 'core/patient_form.html', {
                 'errors': errors,
+                'field_errors': dict(field_errors),
                 'form_data': request.POST,
                 'services': SERVICIOS_QR,
                 'doctors': MEDICOS_QR,
@@ -545,11 +1115,21 @@ def qr_patient_create(request):
             try:
                 planned_date = datetime.strptime(planned_date_raw, '%Y-%m-%d').date()
             except ValueError:
-                planned_date = None
+                add_error('planned_date', 'El formato de fecha es invalido.')
+
+        if errors:
+            return render(request, 'core/patient_form.html', {
+                'errors': errors,
+                'field_errors': dict(field_errors),
+                'form_data': request.POST,
+                'services': SERVICIOS_QR,
+                'doctors': MEDICOS_QR,
+                'coverages': COBERTURAS_QR,
+            })
 
         patient = Patient.objects.create(
             full_name=full_name,
-            dni=dni,
+            dni=dni_digits,
             phone=phone,
             email=email,
             coverage=coverage,
@@ -558,9 +1138,6 @@ def qr_patient_create(request):
             planned_date=planned_date,
             sede=sede,
             external_observations=external_observations,
-            material_status=material_status,
-            en_quirofano=en_quirofano,
-            observaciones_calendario=observaciones_calendario,
         )
 
         # Archivos
@@ -581,9 +1158,13 @@ def qr_patient_create(request):
                     type=att_type,
                 )
 
+        email_sent = _send_patient_tracking_email(request, patient)
+
         return render(request, 'core/patient_form.html', {
             'success': True,
             'tracking_id': patient.tracking_id,
+            'tracking_url': f"{reverse('core:tracking')}?{urlencode({'id': patient.tracking_id})}" if patient.tracking_id else reverse('core:tracking'),
+            'email_sent': email_sent,
             'form_data': {},
             'services': SERVICIOS_QR,
             'doctors': MEDICOS_QR,
@@ -595,6 +1176,48 @@ def qr_patient_create(request):
         'services': SERVICIOS_QR,
         'doctors': MEDICOS_QR,
         'coverages': COBERTURAS_QR,
+    })
+
+
+def admission_patient_create(request):
+    if request.method == 'POST':
+        last_name = request.POST.get('last_name', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        dni = request.POST.get('dni', '').strip()
+        dni_digits = re.sub(r'\D+', '', dni)
+        full_name = ' '.join(part for part in [last_name, first_name] if part) or 'PACIENTE ADMISION'
+        observations = request.POST.get('external_observations', '').strip()
+
+        patient = Patient.objects.create(
+            full_name=full_name,
+            dni=dni_digits,
+            phone='',
+            email='',
+            coverage='ADMISION',
+            doctor='ADMISION',
+            service='ADMISION',
+            planned_date=timezone.localdate(),
+            sede='',
+            external_observations=observations,
+        )
+
+        for uploaded_file in request.FILES.getlist('ordenes_files'):
+            Attachment.objects.create(
+                patient=patient,
+                file=uploaded_file,
+                type=Attachment.TYPE_ORDEN,
+            )
+
+        return render(request, 'core/admission_patient_form.html', {
+            'success': True,
+            'patient': patient,
+            'tracking_id': patient.tracking_id,
+            'tracking_url': f"{reverse('core:tracking')}?{urlencode({'id': patient.tracking_id})}" if patient.tracking_id else reverse('core:tracking'),
+            'form_data': {},
+        })
+
+    return render(request, 'core/admission_patient_form.html', {
+        'form_data': {},
     })
 
 
@@ -626,16 +1249,25 @@ def dashboard(request):
             "total_mes": summary["total_mes"],
             "total_semana": summary["total_semana"],
             "status_summary": [
-                {"label": "Pendientes", "code": Patient.STATUS_PENDIENTE, "count": mapa_estados.get(Patient.STATUS_PENDIENTE, 0)},
-                {"label": "Solicitados", "code": Patient.STATUS_SOLICITADO, "count": mapa_estados.get(Patient.STATUS_SOLICITADO, 0)},
+                {"label": "Pendiente envio prestador", "code": Patient.STATUS_PENDIENTE, "count": mapa_estados.get(Patient.STATUS_PENDIENTE, 0)},
+                {"label": "Pendiente prestador", "code": Patient.STATUS_PENDIENTE_PRESTADOR, "count": mapa_estados.get(Patient.STATUS_PENDIENTE_PRESTADOR, 0)},
+                {"label": "Pendiente medico", "code": Patient.STATUS_PENDIENTE_MEDICO, "count": mapa_estados.get(Patient.STATUS_PENDIENTE_MEDICO, 0)},
+                {"label": "Pendiente paciente", "code": Patient.STATUS_PENDIENTE_PACIENTE, "count": mapa_estados.get(Patient.STATUS_PENDIENTE_PACIENTE, 0)},
                 {"label": "Autorizados", "code": Patient.STATUS_AUTORIZADO, "count": mapa_estados.get(Patient.STATUS_AUTORIZADO, 0)},
-                {"label": "Presupuesto sí", "code": Patient.STATUS_PRESUPUESTO_SI, "count": mapa_estados.get(Patient.STATUS_PRESUPUESTO_SI, 0)},
-                {"label": "Material pendiente", "code": Patient.STATUS_MATERIAL_PENDIENTE, "count": mapa_estados.get(Patient.STATUS_MATERIAL_PENDIENTE, 0)},
-                {"label": "Rechazos", "code": Patient.STATUS_RECHAZO, "count": mapa_estados.get(Patient.STATUS_RECHAZO, 0)},
+                {"label": "Pendiente comercial - presupuesto", "code": Patient.STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO, "count": mapa_estados.get(Patient.STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO, 0)},
+                {"label": "Autorizado - material pendiente", "code": Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE, "count": mapa_estados.get(Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE, 0)},
+                {"label": "Rechazo cobertura", "code": Patient.STATUS_RECHAZO_COBERTURA, "count": mapa_estados.get(Patient.STATUS_RECHAZO_COBERTURA, 0)},
                 {"label": "Reprogramados", "code": Patient.STATUS_REPROGRAMADO, "count": mapa_estados.get(Patient.STATUS_REPROGRAMADO, 0)},
+                {"label": "Cancela medico", "code": Patient.STATUS_CANCELA_MEDICO, "count": mapa_estados.get(Patient.STATUS_CANCELA_MEDICO, 0)},
+                {"label": "Cancela pte", "code": Patient.STATUS_CANCELA_PTE, "count": mapa_estados.get(Patient.STATUS_CANCELA_PTE, 0)},
             ],
-            "proximas_hoy": list(Patient.objects.filter(planned_date=hoy).only("id", "full_name", "service", "coverage", "planned_date").order_by('planned_date', 'service', 'full_name')),
-            "proximas_semana": list(Patient.objects.filter(planned_date__gt=hoy, planned_date__lte=hoy + timedelta(days=7)).only("id", "full_name", "service", "coverage", "planned_date")),
+            "proximas_hoy": list(Patient.objects.filter(planned_date=hoy).only("id", "full_name", "service", "coverage", "planned_date", "status").order_by('planned_date', 'service', 'full_name')),
+            "proximas_semana": [
+                {"patient": p, "days_until": (p.planned_date - hoy).days}
+                for p in Patient.objects.filter(
+                    planned_date__gt=hoy, planned_date__lte=hoy + timedelta(days=7)
+                ).only("id", "full_name", "service", "coverage", "planned_date", "status").order_by('planned_date', 'full_name')
+            ],
             "ultimas": list(Patient.objects.only("id", "created_at", "full_name", "service", "coverage", "status").order_by('-created_at')[:5]),
             "top_servicios": list(Patient.objects.values('service').annotate(c=Count('id')).order_by('-c')[:5]),
             "top_coberturas": list(Patient.objects.values('coverage').annotate(c=Count('id')).order_by('-c')[:5]),
@@ -674,29 +1306,11 @@ def patient_list(request):
         q = form.cleaned_data.get("q")
         if q:
             qn = _normalize_text(q)
-            # Si el modelo tiene campos normalizados, úsalos (más eficiente);
-            # si no, caer al enfoque por anotación como antes.
-            try:
-                Patient._meta.get_field('full_name_norm')
-                use_field = True
-            except Exception:
-                use_field = False
-
-            if use_field:
-                qs = qs.filter(
-                    Q(full_name_norm__contains=qn) |
-                    Q(dni_norm__contains=qn) |
-                    Q(tracking_id__icontains=q)  # Búsqueda por tracking OVA
-                )
-            else:
-                qs = qs.annotate(
-                    full_name_norm=_normalized_expr("full_name"),
-                    dni_norm=_normalized_expr("dni"),
-                ).filter(
-                    Q(full_name_norm__contains=qn) |
-                    Q(dni_norm__contains=qn) |
-                    Q(tracking_id__icontains=q)  # Búsqueda por tracking OVA
-                )
+            qs = qs.filter(
+                Q(full_name_norm__contains=qn) |
+                Q(dni_norm__contains=qn) |
+                Q(tracking_id__icontains=q)  # Búsqueda por tracking OVA
+            )
 
         # Estado
         status = form.cleaned_data.get("status")
@@ -717,6 +1331,11 @@ def patient_list(request):
         service = form.cleaned_data.get("service")
         if service:
             qs = qs.filter(service__icontains=service)
+
+        # Sede
+        sede = form.cleaned_data.get("sede")
+        if sede:
+            qs = qs.filter(sede=sede)
 
         # Usuario asignado
         assigned_to = form.cleaned_data.get("assigned_to")
@@ -773,13 +1392,22 @@ def patient_list(request):
     
     doctor_options = cache.get('patient_doctor_options')
     if doctor_options is None:
-        doctor_options = list(
+        db_doctors = list(
             Patient.objects.exclude(doctor__isnull=True)
             .exclude(doctor__exact="")
             .values_list("doctor", flat=True)
             .distinct()
-            .order_by("doctor")
         )
+        # Fusionar DB + predefinidos, dedup case-insensitive, preferir valor de DB
+        seen: dict[str, str] = {}
+        for d in db_doctors:
+            d = d.strip()
+            if d:
+                seen[d.upper()] = d
+        for d in MEDICOS_QR:
+            if d.upper() not in seen:
+                seen[d.upper()] = d
+        doctor_options = sorted(seen.values(), key=lambda x: x.upper())
         cache.set('patient_doctor_options', doctor_options, 3600)  # 1 hora
     
     coverage_options = cache.get('patient_coverage_options')
@@ -801,15 +1429,54 @@ def patient_list(request):
     pagination_qs = pagination_params.urlencode()
 
     # Calcular días restantes para cada paciente de la página actual
-    today = timezone.now().date()
+    today = timezone.now()
+    today_date = today.date()
     patients_list = []
     for p in page_obj.object_list:
         if p.planned_date:
-            days_diff = (p.planned_date - today).days
+            days_diff = (p.planned_date - today_date).days
             p.days_until_surgery = days_diff
         else:
             p.days_until_surgery = None
+        # Días en estado pendiente prestador para alertas de seguimiento
+        if p.status == Patient.STATUS_PENDIENTE_PRESTADOR:
+            since = p.solicitado_since or p.created_at
+            p.days_in_solicitado = (today - since).days
+            # Tiempo desde creación hasta que se marcó como pendiente prestador
+            if p.solicitado_since:
+                p.days_carga_to_solicitado = (p.solicitado_since - p.created_at).days
+            else:
+                p.days_carga_to_solicitado = None
+        else:
+            p.days_in_solicitado = None
+            p.days_carga_to_solicitado = None
+
+        # Días en el estado actual (excepto pendiente envio prestador y autorizado)
+        if p.status not in (Patient.STATUS_PENDIENTE, Patient.STATUS_AUTORIZADO):
+            since_status = p.status_since or p.created_at
+            p.days_in_status = (today - since_status).days
+        else:
+            p.days_in_status = None
         patients_list.append(p)
+
+    latest_quirofano_snapshot = QuirofanoSnapshot.objects.first()
+    latest_quirofano_label = None
+    if latest_quirofano_snapshot is not None and patients_list:
+        visible_patient_ids = [patient.id for patient in patients_list]
+        in_latest_quirofano_ids = set(
+            latest_quirofano_snapshot.entries
+            .filter(app_patient_id__in=visible_patient_ids)
+            .exclude(change_type=QuirofanoEntry.CHANGE_REMOVED)
+            .exclude(resolved_comparison_status=QuirofanoEntry.COMPARISON_ONLY_APP)
+            .values_list('app_patient_id', flat=True)
+            .distinct()
+        )
+        latest_quirofano_label = latest_quirofano_snapshot.imported_at
+        for patient in patients_list:
+            patient.in_latest_quirofano = patient.id in in_latest_quirofano_ids
+    else:
+        for patient in patients_list:
+            patient.in_latest_quirofano = False
 
     # Lista de usuarios activos para asignación en bulk (solo campos necesarios)
     users = User.objects.filter(is_active=True).order_by('first_name', 'last_name').only('id', 'username', 'first_name', 'last_name')
@@ -824,7 +1491,9 @@ def patient_list(request):
         "coverage_options": coverage_options,
         "users": users,
         "status_choices": Patient.STATUS_CHOICES,
+        "latest_quirofano_label": latest_quirofano_label,
     })
+
 
 # -------------------------------------------------------------
 # DETALLE
@@ -863,17 +1532,39 @@ def patient_detail(request, pk):
             except ValueError as exc:
                 messages.error(request, str(exc))
             except Exception as exc:
+                logger.exception(
+                    "Error enviando mail de admisión para paciente %s (ID=%s): %s",
+                    patient.full_name,
+                    patient.pk,
+                    exc,
+                )
                 messages.error(request, _format_admission_email_error(exc))
             return redirect(_build_patient_detail_url(patient.pk, next_url))
 
         # ACTUALIZAR ESTADO
         if "update_status" in request.POST:
             new_status = request.POST.get("status", patient.status)
-            new_obs = request.POST.get("internal_observations", "").strip()
+            new_obs = request.POST.get("internal_observations", patient.internal_observations or "").strip()
+            old_status = patient.status
             patient.status = new_status
             patient.internal_observations = new_obs
             patient.save()
-            messages.success(request, "Estado actualizado.")
+            if old_status != Patient.STATUS_AUTORIZADO and new_status == Patient.STATUS_AUTORIZADO:
+                if _send_patient_authorized_email(request, patient):
+                    messages.success(request, "Estado actualizado. Mail de autorizacion enviado al paciente.")
+                elif patient.email:
+                    messages.warning(request, "Estado actualizado, pero no se pudo enviar el mail de autorizacion.")
+                else:
+                    messages.warning(request, "Estado actualizado. No se envio mail porque el paciente no tiene email cargado.")
+            else:
+                messages.success(request, "Estado actualizado.")
+            return redirect(_build_patient_detail_url(patient.pk, next_url))
+
+        # TOGGLE IMPRESO
+        if "toggle_impreso" in request.POST:
+            patient.impreso = not patient.impreso
+            patient.save()
+            messages.success(request, "Estado de impreso actualizado.")
             return redirect(_build_patient_detail_url(patient.pk, next_url))
 
         # ASIGNAR USUARIO
@@ -905,7 +1596,11 @@ def patient_detail(request, pk):
         if "reprogram" in request.POST:
             reprogram_form = ReprogramForm(request.POST, instance=patient)
             if reprogram_form.is_valid():
-                reprogram_form.save()
+                p = reprogram_form.save(commit=False)
+                p.last_reprogram_date = timezone.now()
+                p.last_reprogram_reason = reprogram_form.cleaned_data.get('reprogram_reason', '')
+                p.status = Patient.STATUS_REPROGRAMADO
+                p.save()
                 messages.success(request, "Reprogramación realizada.")
                 return redirect(_build_patient_detail_url(patient.pk, next_url))
 
@@ -949,7 +1644,6 @@ def patient_detail(request, pk):
             # Actualizar hora de cirugía
             surgery_time_str = request.POST.get("surgery_time", "").strip()
             if surgery_time_str:
-                from datetime import datetime
                 try:
                     # Parsear hora en formato HH:MM
                     time_obj = datetime.strptime(surgery_time_str, "%H:%M").time()
@@ -1224,8 +1918,6 @@ def calendar_day_view(request):
 
 @login_required
 def calendar_events(request):
-    from datetime import datetime, timedelta
-    
     # Obtener rango de fechas del calendario (parámetros start y end de FullCalendar)
     start = request.GET.get('start')
     end = request.GET.get('end')
@@ -1331,8 +2023,6 @@ def calendar_events(request):
 @require_POST
 def calendar_move_event(request, pk):
     patient = get_object_or_404(Patient, pk=pk)
-    
-    import json
     try:
         data = json.loads(request.body)
         new_date_str = data.get("new_date")
@@ -1354,11 +2044,247 @@ def calendar_move_event(request, pk):
 
 
 # -------------------------------------------------------------
+# QUIROFANO
+# -------------------------------------------------------------
+@login_required
+def quirofano_view(request):
+    from collections import defaultdict as _defaultdict
+
+    if request.method == 'POST':
+        try:
+            snapshot = import_daily_quirofano_snapshot(user=request.user)
+        except RuntimeError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:
+            messages.error(request, f'No se pudo actualizar el quirófano: {exc}')
+        else:
+            messages.success(
+                request,
+                f'Quirófano actualizado. {snapshot.total_entries} cirugías, '
+                f'{snapshot.new_count} nuevas, {snapshot.changed_count} cambiadas.',
+            )
+            return redirect(f"{reverse('core:quirofano_management')}?snapshot={snapshot.pk}")
+
+    requested_snapshot = (request.GET.get('snapshot') or '').strip()
+    active_snapshot = _get_calendar_snapshot(requested_snapshot)
+    snapshots = QuirofanoSnapshot.objects.select_related('created_by').all()[:20]
+
+    date_w, date_to_w = default_quirofano_window()
+
+    comparison_summary = {'both': 0, 'only_quirofano': 0, 'only_app': 0}
+    active_snapshot_files = []
+    day_groups = []
+    removed_entries = []
+    sede_choices = list(Patient.SEDE_CHOICES)
+    service_choices = []
+
+    current_filters = {
+        'date': request.GET.get('date', ''),
+        'change': request.GET.get('change', ''),
+        'comparison': request.GET.get('comparison', ''),
+        'sede': request.GET.get('sede', ''),
+        'service': request.GET.get('service', ''),
+        'q': request.GET.get('q', ''),
+    }
+
+    default_whatsapp_timings = {
+        'load_timeout_ms': DEFAULT_WHATSAPP_LOAD_TIMEOUT_MS,
+        'post_send_delay_ms': DEFAULT_WHATSAPP_POST_SEND_DELAY_MS,
+        'between_send_delay_ms': DEFAULT_WHATSAPP_BETWEEN_SEND_DELAY_MS,
+    }
+
+    if active_snapshot is not None:
+        base_qs = active_snapshot.entries.select_related('app_patient')
+        active_qs = base_qs.exclude(change_type=QuirofanoEntry.CHANGE_REMOVED)
+
+        comparison_summary = {
+            'both': active_qs.filter(resolved_comparison_status=QuirofanoEntry.COMPARISON_BOTH).count(),
+            'only_quirofano': active_qs.filter(resolved_comparison_status=QuirofanoEntry.COMPARISON_ONLY_QUIROFANO).count(),
+            'only_app': active_qs.filter(resolved_comparison_status=QuirofanoEntry.COMPARISON_ONLY_APP).count(),
+        }
+
+        active_snapshot_files = _build_snapshot_source_links(active_snapshot)
+        service_choices = sorted(
+            active_qs.exclude(canonical_service='').values_list('canonical_service', flat=True).distinct()
+        )
+
+        removed_entries = list(base_qs.filter(change_type=QuirofanoEntry.CHANGE_REMOVED).order_by('patient_name'))
+
+        filtered_qs = active_qs
+        if current_filters['date']:
+            try:
+                filter_date = datetime.strptime(current_filters['date'], '%Y-%m-%d').date()
+                filtered_qs = filtered_qs.filter(surgery_date=filter_date)
+            except ValueError:
+                pass
+        if current_filters['change']:
+            filtered_qs = filtered_qs.filter(change_type=current_filters['change'])
+        if current_filters['comparison']:
+            filtered_qs = filtered_qs.filter(resolved_comparison_status=current_filters['comparison'])
+        if current_filters['sede']:
+            filtered_qs = filtered_qs.filter(sede=current_filters['sede'])
+        if current_filters['service']:
+            filtered_qs = filtered_qs.filter(canonical_service=current_filters['service'])
+        if current_filters['q']:
+            q = current_filters['q'].strip()
+            filtered_qs = filtered_qs.filter(
+                Q(patient_name_norm__icontains=_normalize_text(q))
+                | Q(dni__icontains=q)
+                | Q(doctor_norm__icontains=_normalize_text(q))
+            )
+
+        filtered_qs = filtered_qs.order_by('surgery_date', 'surgery_time', 'patient_name')
+
+        grouped: dict = _defaultdict(list)
+        for entry in filtered_qs:
+            entry.is_in_panel = bool(entry.app_patient_id)
+            entry.panel_service = entry.app_patient.service if entry.app_patient_id else ''
+            entry.whatsapp_phone = entry.report_phone or (entry.app_patient.phone if entry.app_patient_id else '')
+            entry.whatsapp_source = 'Reporte' if entry.report_phone else ('Panel' if entry.app_patient_id and entry.app_patient.phone else '')
+            grouped[entry.surgery_date].append(entry)
+        day_groups = [
+            {'date': d, 'entries': grouped[d]}
+            for d in sorted(grouped.keys())
+        ]
+
+    filter_params = {k: v for k, v in current_filters.items() if v}
+    if active_snapshot:
+        filter_params['snapshot'] = active_snapshot.pk
+    pagination_qs = urlencode(filter_params)
+
+    return render(request, 'core/quirofano.html', {
+        'active_snapshot': active_snapshot,
+        'comparison_summary': comparison_summary,
+        'snapshots': snapshots,
+        'current_filters': current_filters,
+        'sede_choices': sede_choices,
+        'service_choices': service_choices,
+        'active_snapshot_files': active_snapshot_files,
+        'day_groups': day_groups,
+        'removed_entries': removed_entries,
+        'pagination_qs': pagination_qs,
+        'default_window': {'date_from': date_w, 'date_to': date_to_w},
+        'default_whatsapp_timings': default_whatsapp_timings,
+        'quirofano_next_url': _quirofano_management_next_url(request, active_snapshot.pk if active_snapshot else None),
+    })
+
+
+@login_required
+@require_POST
+def quirofano_entry_status_update(request, pk):
+    entry = get_object_or_404(QuirofanoEntry, pk=pk)
+    manual_comparison = request.POST.get('manual_comparison_status', '').strip()
+    valid_comparisons = {'', 'BOTH', 'ONLY_QUIROFANO', 'ONLY_APP'}
+    if manual_comparison in valid_comparisons:
+        entry.manual_comparison_status = manual_comparison
+        entry.resolved_comparison_status = manual_comparison or entry.comparison_status
+        entry.save(update_fields=['manual_comparison_status', 'resolved_comparison_status'])
+    next_url = request.POST.get('next') or reverse('core:quirofano_management')
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        next_url = reverse('core:quirofano_management')
+    return redirect(next_url)
+
+
+@login_required
+@require_POST
+def quirofano_whatsapp_autosend(request):
+    raw_ids = (request.POST.get('entry_ids') or '').strip()
+    next_url = _quirofano_management_next_url(request)
+    entry_ids = [int(value) for value in raw_ids.split(',') if value.strip().isdigit()]
+
+    if not entry_ids:
+        messages.error(request, 'Seleccioná al menos un paciente visible para iniciar el envío automático.')
+        return redirect(next_url)
+
+    entries_by_id = {
+        entry.id: entry
+        for entry in QuirofanoEntry.objects.select_related('app_patient').filter(pk__in=entry_ids)
+    }
+    ordered_entries = [entries_by_id[entry_id] for entry_id in entry_ids if entry_id in entries_by_id]
+
+    if not ordered_entries:
+        messages.error(request, 'No se encontraron entradas válidas para el envío automático.')
+        return redirect(next_url)
+
+    items, skipped = _build_quirofano_whatsapp_batch(ordered_entries)
+    if not items:
+        messages.error(request, 'Ninguno de los seleccionados tiene un teléfono válido para WhatsApp.')
+        return redirect(next_url)
+
+    load_timeout_ms = _parse_positive_int(request.POST.get('load_timeout_ms'), DEFAULT_WHATSAPP_LOAD_TIMEOUT_MS)
+    post_send_delay_ms = _parse_positive_int(request.POST.get('post_send_delay_ms'), DEFAULT_WHATSAPP_POST_SEND_DELAY_MS)
+    between_send_delay_ms = _parse_positive_int(request.POST.get('between_send_delay_ms'), DEFAULT_WHATSAPP_BETWEEN_SEND_DELAY_MS)
+
+    batch_dir = Path(settings.MEDIA_ROOT) / 'quirofano_reports' / 'whatsapp_batches'
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = timezone.localtime().strftime('%Y%m%d_%H%M%S')
+    batch_path = batch_dir / f'whatsapp_autosend_{timestamp}.json'
+    batch_payload = {
+        'created_at': timezone.localtime().isoformat(),
+        'created_by': request.user.username,
+        'items': items,
+        'skipped': skipped,
+        'options': {
+            'load_timeout_ms': load_timeout_ms,
+            'post_send_delay_ms': post_send_delay_ms,
+            'between_send_delay_ms': between_send_delay_ms,
+        },
+    }
+    batch_path.write_text(json.dumps(batch_payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    manage_py = Path(settings.BASE_DIR) / 'manage.py'
+    command = [
+        sys.executable,
+        str(manage_py),
+        'send_quirofano_whatsapp',
+        '--batch-file', str(batch_path),
+        '--load-timeout-ms', str(load_timeout_ms),
+        '--post-send-delay-ms', str(post_send_delay_ms),
+        '--between-send-delay-ms', str(between_send_delay_ms),
+    ]
+
+    creationflags = 0
+    creationflags |= getattr(subprocess, 'DETACHED_PROCESS', 0)
+    creationflags |= getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+
+    try:
+        subprocess.Popen(
+            command,
+            cwd=str(settings.BASE_DIR),
+            creationflags=creationflags,
+            close_fds=bool(creationflags),
+        )
+    except Exception as exc:
+        messages.error(request, f'No se pudo iniciar el flujo automático de WhatsApp: {exc}')
+        return redirect(next_url)
+
+    success_message = (
+        f'Se inició el envío automático para {len(items)} paciente(s). '
+        'Se abrirá/continuará WhatsApp Web en una ventana controlada con espera de carga.'
+    )
+    if skipped:
+        success_message += f' Se omitieron {len(skipped)} sin teléfono válido.'
+    messages.success(request, success_message)
+    return redirect(next_url)
+
+
+
+# -------------------------------------------------------------
 # ESTADISTICAS
 # -------------------------------------------------------------
 @login_required
 def stats_view(request):
     return render(request, 'core/stats.html')
+
+
+def _apply_stats_filters(qs, service_filter="", coverage_filter="", doctor_filter=""):
+    if service_filter:
+        qs = qs.filter(service__icontains=service_filter)
+    if coverage_filter:
+        qs = qs.filter(coverage__icontains=coverage_filter)
+    if doctor_filter:
+        qs = qs.filter(doctor__icontains=doctor_filter)
+    return qs
 
 
 @login_required
@@ -1381,19 +2307,15 @@ def stats_data(request):
     
     # Filtros adicionales
     service_filter = request.GET.get("service", "").strip()
+    coverage_filter = request.GET.get("coverage", "").strip()
     doctor_filter = request.GET.get("doctor", "").strip()
     date_field = (request.GET.get("date_field") or "planned_date").strip()
     if date_field not in {"planned_date", "created_at"}:
         date_field = "planned_date"
 
     date_lookup = "planned_date" if date_field == "planned_date" else "created_at__date"
-    date_field = (request.GET.get("date_field") or "planned_date").strip()
-    if date_field not in {"planned_date", "created_at"}:
-        date_field = "planned_date"
 
-    date_lookup = "planned_date" if date_field == "planned_date" else "created_at__date"
-
-    cache_key = f"stats_data:{start}:{end}:{service_filter}:{doctor_filter}:{date_field}"
+    cache_key = f"stats_data:{start}:{end}:{service_filter}:{coverage_filter}:{doctor_filter}:{date_field}"
     cached_payload = cache.get(cache_key)
     if cached_payload is not None:
         return JsonResponse(cached_payload)
@@ -1413,14 +2335,13 @@ def stats_data(request):
 
     # TOTAL GENERAL: Todas las solicitudes del sistema (sin filtro de fecha)
     base_all = Patient.objects.exclude(status=Patient.STATUS_REALIZADO)
-    if service_filter:
-        base_all = base_all.filter(service__icontains=service_filter)
-    if doctor_filter:
-        base_all = base_all.filter(doctor__icontains=doctor_filter)
+    base_all = _apply_stats_filters(base_all, service_filter, coverage_filter, doctor_filter)
 
     doctors_base = Patient.objects.exclude(status=Patient.STATUS_REALIZADO)
     if service_filter:
         doctors_base = doctors_base.filter(service__icontains=service_filter)
+    if coverage_filter:
+        doctors_base = doctors_base.filter(coverage__icontains=coverage_filter)
 
     overall_total = base_all.count()
     overall_by_status = list(base_all.values("status").annotate(count=Count("id")).order_by("-count"))
@@ -1445,20 +2366,13 @@ def stats_data(request):
     }).exclude(status=Patient.STATUS_REALIZADO)
     
     # Aplicar filtros
-    if service_filter:
-        base = base.filter(service__icontains=service_filter)
-    if doctor_filter:
-        base = base.filter(doctor__icontains=doctor_filter)
+    base = _apply_stats_filters(base, service_filter, coverage_filter, doctor_filter)
 
     # Totales paralelos para ver ambas fechas con el mismo rango (excluir REALIZADO)
     base_by_created = Patient.objects.filter(created_at__date__gte=start_d, created_at__date__lte=end_d).exclude(status=Patient.STATUS_REALIZADO)
     base_by_planned = Patient.objects.filter(planned_date__gte=start_d, planned_date__lte=end_d).exclude(status=Patient.STATUS_REALIZADO)
-    if service_filter:
-        base_by_created = base_by_created.filter(service__icontains=service_filter)
-        base_by_planned = base_by_planned.filter(service__icontains=service_filter)
-    if doctor_filter:
-        base_by_created = base_by_created.filter(doctor__icontains=doctor_filter)
-        base_by_planned = base_by_planned.filter(doctor__icontains=doctor_filter)
+    base_by_created = _apply_stats_filters(base_by_created, service_filter, coverage_filter, doctor_filter)
+    base_by_planned = _apply_stats_filters(base_by_planned, service_filter, coverage_filter, doctor_filter)
     # Reusar conteos (ejecuta .count() una vez cada uno)
     base_by_created_count = base_by_created.count()
     base_by_planned_count = base_by_planned.count()
@@ -1475,6 +2389,12 @@ def stats_data(request):
         all_doctors = list(Patient.objects.values_list('doctor', flat=True).distinct().order_by('doctor'))
         all_doctors = [d for d in all_doctors if d]
         cache.set("stats_all_doctors", all_doctors, 3600)
+
+    all_coverages = cache.get("stats_all_coverages")
+    if all_coverages is None:
+        all_coverages = list(Patient.objects.values_list('coverage', flat=True).distinct().order_by('coverage'))
+        all_coverages = [c for c in all_coverages if c]
+        cache.set("stats_all_coverages", all_coverages, 3600)
 
     filtered_doctors = list(
         doctors_base.exclude(doctor__isnull=True)
@@ -1508,20 +2428,13 @@ def stats_data(request):
                 f"{date_lookup}__gte": p_start,
                 f"{date_lookup}__lte": p_end,
             }).exclude(status=Patient.STATUS_REALIZADO)
-            if service_filter:
-                pq = pq.filter(service__icontains=service_filter)
-            if doctor_filter:
-                pq = pq.filter(doctor__icontains=doctor_filter)
+            pq = _apply_stats_filters(pq, service_filter, coverage_filter, doctor_filter)
             
             # Datos adicionales por período (excluir REALIZADO)
             pq_created = Patient.objects.filter(created_at__date__gte=p_start, created_at__date__lte=p_end).exclude(status=Patient.STATUS_REALIZADO)
             pq_planned = Patient.objects.filter(planned_date__gte=p_start, planned_date__lte=p_end).exclude(status=Patient.STATUS_REALIZADO)
-            if service_filter:
-                pq_created = pq_created.filter(service__icontains=service_filter)
-                pq_planned = pq_planned.filter(service__icontains=service_filter)
-            if doctor_filter:
-                pq_created = pq_created.filter(doctor__icontains=doctor_filter)
-                pq_planned = pq_planned.filter(doctor__icontains=doctor_filter)
+            pq_created = _apply_stats_filters(pq_created, service_filter, coverage_filter, doctor_filter)
+            pq_planned = _apply_stats_filters(pq_planned, service_filter, coverage_filter, doctor_filter)
             
             periods.append({
                 "label": f"{p_start.strftime('%d/%m')}–{p_end.strftime('%d/%m')}",
@@ -1546,12 +2459,8 @@ def stats_data(request):
         while current <= end_d:
             dc = Patient.objects.filter(created_at__date=current).exclude(status=Patient.STATUS_REALIZADO)
             dp = Patient.objects.filter(planned_date=current).exclude(status=Patient.STATUS_REALIZADO)
-            if service_filter:
-                dc = dc.filter(service__icontains=service_filter)
-                dp = dp.filter(service__icontains=service_filter)
-            if doctor_filter:
-                dc = dc.filter(doctor__icontains=doctor_filter)
-                dp = dp.filter(doctor__icontains=doctor_filter)
+            dc = _apply_stats_filters(dc, service_filter, coverage_filter, doctor_filter)
+            dp = _apply_stats_filters(dp, service_filter, coverage_filter, doctor_filter)
             
             daily_created.append({
                 "date": str(current),
@@ -1588,6 +2497,7 @@ def stats_data(request):
         "daily_planned": daily_planned if days <= 90 else [],
         "daily_authorized": daily_authorized if days <= 90 else [],
         "all_services": all_services,
+        "all_coverages": all_coverages,
         "all_doctors": all_doctors,
         "filtered_doctors": filtered_doctors,
     }
@@ -1609,7 +2519,26 @@ def export_excel(request):
 
     # Usar values_list + iterator para reducir memoria y evitar instanciar modelos completos
     status_map = dict(Patient.STATUS_CHOICES)
-    qs = Patient.objects.values_list(
+    service_filter = request.GET.get("service", "").strip()
+    coverage_filter = request.GET.get("coverage", "").strip()
+    doctor_filter = request.GET.get("doctor", "").strip()
+    date_field = (request.GET.get("date_field") or "").strip()
+    start = request.GET.get("from", "").strip()
+    end = request.GET.get("to", "").strip()
+
+    qs = _apply_stats_filters(Patient.objects.all(), service_filter, coverage_filter, doctor_filter)
+    if date_field in {"planned_date", "created_at"}:
+        date_lookup = "planned_date" if date_field == "planned_date" else "created_at__date"
+        start_d = parse_date(start) if start else None
+        end_d = parse_date(end) if end else None
+        if start_d and end_d and end_d < start_d:
+            start_d, end_d = end_d, start_d
+        if start_d:
+            qs = qs.filter(**{f"{date_lookup}__gte": start_d})
+        if end_d:
+            qs = qs.filter(**{f"{date_lookup}__lte": end_d})
+
+    qs = qs.values_list(
         'tracking_id', 'full_name', 'dni', 'coverage', 'doctor', 'service', 'planned_date', 'status', 'created_at'
     ).order_by('-created_at').iterator()
     for tracking_id, full_name, dni, coverage, doctor, service, planned_date, status, created_at in qs:
@@ -1661,6 +2590,7 @@ def export_pdf(request):
     
     # Filtros adicionales
     service_filter = request.GET.get("service", "").strip()
+    coverage_filter = request.GET.get("coverage", "").strip()
     doctor_filter = request.GET.get("doctor", "").strip()
     
     # Campo de fecha a usar (planned_date o created_at)
@@ -1684,10 +2614,7 @@ def export_pdf(request):
 
     # TOTAL GENERAL: Todas las solicitudes del sistema (sin filtro de fecha)
     base_all = Patient.objects.exclude(status=Patient.STATUS_REALIZADO)
-    if service_filter:
-        base_all = base_all.filter(service__icontains=service_filter)
-    if doctor_filter:
-        base_all = base_all.filter(doctor__icontains=doctor_filter)
+    base_all = _apply_stats_filters(base_all, service_filter, coverage_filter, doctor_filter)
 
     overall_total = base_all.count()
     overall_by_status = list(base_all.values("status").annotate(count=Count("id")).order_by("-count"))
@@ -1712,10 +2639,7 @@ def export_pdf(request):
     }).exclude(status=Patient.STATUS_REALIZADO)
     
     # Aplicar filtros
-    if service_filter:
-        base = base.filter(service__icontains=service_filter)
-    if doctor_filter:
-        base = base.filter(doctor__icontains=doctor_filter)
+    base = _apply_stats_filters(base, service_filter, coverage_filter, doctor_filter)
 
     # Períodos de 7 días
     days = (end_d - start_d).days + 1
@@ -1724,12 +2648,8 @@ def export_pdf(request):
     # Totales duales para comparativa (excluir REALIZADO que es solo para hemodinámica)
     base_by_created = Patient.objects.filter(created_at__date__gte=start_d, created_at__date__lte=end_d).exclude(status=Patient.STATUS_REALIZADO)
     base_by_planned = Patient.objects.filter(planned_date__gte=start_d, planned_date__lte=end_d).exclude(status=Patient.STATUS_REALIZADO)
-    if service_filter:
-        base_by_created = base_by_created.filter(service__icontains=service_filter)
-        base_by_planned = base_by_planned.filter(service__icontains=service_filter)
-    if doctor_filter:
-        base_by_created = base_by_created.filter(doctor__icontains=doctor_filter)
-        base_by_planned = base_by_planned.filter(doctor__icontains=doctor_filter)
+    base_by_created = _apply_stats_filters(base_by_created, service_filter, coverage_filter, doctor_filter)
+    base_by_planned = _apply_stats_filters(base_by_planned, service_filter, coverage_filter, doctor_filter)
     
     total_created = base_by_created.count()
     total_planned = base_by_planned.count()
@@ -1743,20 +2663,13 @@ def export_pdf(request):
                 f"{date_lookup}__gte": p_start,
                 f"{date_lookup}__lte": p_end,
             }).exclude(status=Patient.STATUS_REALIZADO)
-            if service_filter:
-                pq = pq.filter(service__icontains=service_filter)
-            if doctor_filter:
-                pq = pq.filter(doctor__icontains=doctor_filter)
+            pq = _apply_stats_filters(pq, service_filter, coverage_filter, doctor_filter)
             
             # Datos adicionales por período (excluir REALIZADO)
             pq_created = Patient.objects.filter(created_at__date__gte=p_start, created_at__date__lte=p_end).exclude(status=Patient.STATUS_REALIZADO)
             pq_planned = Patient.objects.filter(planned_date__gte=p_start, planned_date__lte=p_end).exclude(status=Patient.STATUS_REALIZADO)
-            if service_filter:
-                pq_created = pq_created.filter(service__icontains=service_filter)
-                pq_planned = pq_planned.filter(service__icontains=service_filter)
-            if doctor_filter:
-                pq_created = pq_created.filter(doctor__icontains=doctor_filter)
-                pq_planned = pq_planned.filter(doctor__icontains=doctor_filter)
+            pq_created = _apply_stats_filters(pq_created, service_filter, coverage_filter, doctor_filter)
+            pq_planned = _apply_stats_filters(pq_planned, service_filter, coverage_filter, doctor_filter)
             
             periods.append({
                 "label": f"{p_start.strftime('%d/%m')}–{p_end.strftime('%d/%m')}",
@@ -1776,14 +2689,19 @@ def export_pdf(request):
     width, height = A4
     
     # Colores consistentes para estados
+    status_labels = dict(Patient.STATUS_CHOICES)
     status_colors = {
-        'PENDIENTE': '#ffc107',
-        'SOLICITADO': '#17a2b8',
+        Patient.STATUS_PENDIENTE: '#ffc107',
+        Patient.STATUS_PENDIENTE_PRESTADOR: '#17a2b8',
+        Patient.STATUS_PENDIENTE_MEDICO: '#0ea5e9',
+        Patient.STATUS_PENDIENTE_PACIENTE: '#14b8a6',
         'AUTORIZADO': '#28a745',
-        'PRESUPUESTO_SI': '#6f42c1',
-        'MATERIAL_PENDIENTE': '#fd7e14',
-        'RECHAZO': '#dc3545',
+        Patient.STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO: '#6f42c1',
+        Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE: '#fd7e14',
+        Patient.STATUS_RECHAZO_COBERTURA: '#dc3545',
         'REPROGRAMADO': '#6c757d',
+        Patient.STATUS_CANCELA_MEDICO: '#991b1b',
+        Patient.STATUS_CANCELA_PTE: '#b91c1c',
     }
 
     def add_header(pdf, y):
@@ -1797,6 +2715,9 @@ def export_pdf(request):
         y_offset = 50
         if service_filter:
             pdf.drawString(50, y - y_offset, f"Servicio: {service_filter}")
+            y_offset += 15
+        if coverage_filter:
+            pdf.drawString(50, y - y_offset, f"Cobertura: {coverage_filter}")
             y_offset += 15
         if doctor_filter:
             pdf.drawString(50, y - y_offset, f"Profesional: {doctor_filter}")
@@ -1824,15 +2745,7 @@ def export_pdf(request):
         for idx, item in enumerate(data):
             label = item.get(labels_key) or "Sin especificar"
             if labels_key == 'status':
-                label_display = {
-                    'PENDIENTE': 'Pendiente (Pendiente de envío)',
-                    'SOLICITADO': 'Se envió a la cobertura',
-                    'AUTORIZADO': 'Autorizado por la cobertura',
-                    'PRESUPUESTO_SI': 'Presupuesto aprobado',
-                    'MATERIAL_PENDIENTE': 'Pendiente de material',
-                    'RECHAZO': 'Rechazado por la cobertura',
-                    'REPROGRAMADO': 'Reprogramado',
-                }.get(label, label)
+                label_display = status_labels.get(label, label)
             else:
                 label_display = label
             
@@ -1929,20 +2842,10 @@ def export_pdf(request):
         for item in data[:10]:
             all_statuses.update(item['status_counts'].keys())
         
-        status_labels = {
-            'PENDIENTE': 'Pendiente (Pendiente de envío)',
-            'SOLICITADO': 'Se envió a la cobertura',
-            'AUTORIZADO': 'Autorizado por la cobertura',
-            'PRESUPUESTO_SI': 'Presupuesto aprobado',
-            'MATERIAL_PENDIENTE': 'Pendiente de material',
-            'RECHAZO': 'Rechazado por la cobertura',
-            'REPROGRAMADO': 'Reprogramado',
-        }
-        
         # Preparar datos para cada estado
         bottom = [0] * len(services)
         
-        for status in ['AUTORIZADO', 'SOLICITADO', 'MATERIAL_PENDIENTE', 'PENDIENTE', 'RECHAZO', 'REPROGRAMADO']:
+        for status in ['AUTORIZADO', Patient.STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO, Patient.STATUS_PENDIENTE_PRESTADOR, Patient.STATUS_PENDIENTE_MEDICO, Patient.STATUS_PENDIENTE_PACIENTE, Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE, Patient.STATUS_PENDIENTE, Patient.STATUS_RECHAZO_COBERTURA, 'REPROGRAMADO', Patient.STATUS_CANCELA_MEDICO, Patient.STATUS_CANCELA_PTE]:
             if status in all_statuses:
                 values = [item['status_counts'].get(status, 0) for item in data[:10]]
                 ax.bar(services, values, bottom=bottom, 
@@ -1995,16 +2898,9 @@ def export_pdf(request):
     # Desglose por estado
     pdf.setFont("Helvetica", 10)
     for item in overall_by_status:
-        status_display = {
-            'PENDIENTE': 'Pendiente (Pendiente de envío)',
-            'SOLICITADO': 'Se envió a la cobertura',
-            'AUTORIZADO': 'Autorizado por la cobertura',
-            'PRESUPUESTO_SI': 'Presupuesto aprobado',
-            'MATERIAL_PENDIENTE': 'Pendiente de material',
-            'RECHAZO': 'Rechazado por la cobertura',
-            'REPROGRAMADO': 'Reprogramado',
-        }.get(item['status'], item['status'])
-        pdf.drawString(70, y, f"• {status_display}: {item['count']} ({item['count']/overall_total*100:.1f}%)")
+        status_display = status_labels.get(item['status'], item['status'])
+        pct = (item['count'] / overall_total * 100) if overall_total else 0
+        pdf.drawString(70, y, f"• {status_display}: {item['count']} ({pct:.1f}%)")
         y -= 15
     
     # Gráfico de estados
@@ -2062,15 +2958,7 @@ def export_pdf(request):
         y -= 15
         pdf.setFont("Helvetica", 9)
         for status, count in item['status_counts'].items():
-            status_display = {
-                'PENDIENTE': 'Pendiente (Pendiente de envío)',
-                'SOLICITADO': 'Se envió a la cobertura',
-                'AUTORIZADO': 'Autorizado por la cobertura',
-                'PRESUPUESTO_SI': 'Presupuesto aprobado',
-                'MATERIAL_PENDIENTE': 'Pendiente de material',
-                'RECHAZO': 'Rechazado por la cobertura',
-                'REPROGRAMADO': 'Reprogramado',
-            }.get(status, status)
+            status_display = status_labels.get(status, status)
             pdf.drawString(70, y, f"  • {status_display}: {count}")
             y -= 12
         y -= 5
@@ -2139,15 +3027,7 @@ def export_pdf(request):
             pdf.drawString(70, y, f"Total de solicitudes: {period['total']}")
             y -= 12
             for item in period['by_status']:
-                status_display = {
-                    'PENDIENTE': 'Pendiente (Pendiente de envío)',
-                    'SOLICITADO': 'Se envió a la cobertura',
-                    'AUTORIZADO': 'Autorizado por la cobertura',
-                    'PRESUPUESTO_SI': 'Presupuesto aprobado',
-                    'MATERIAL_PENDIENTE': 'Pendiente de material',
-                    'RECHAZO': 'Rechazado por la cobertura',
-                    'REPROGRAMADO': 'Reprogramado',
-                }.get(item['status'], item['status'])
+                status_display = status_labels.get(item['status'], item['status'])
                 pdf.drawString(90, y, f"• {status_display}: {item['count']}")
                 y -= 12
             y -= 8
@@ -2256,6 +3136,8 @@ def export_pdf(request):
     filename_parts = ["estadisticas", start_d.strftime('%Y%m%d'), end_d.strftime('%Y%m%d')]
     if service_filter:
         filename_parts.append(service_filter[:20].replace(' ', '_'))
+    if coverage_filter:
+        filename_parts.append(coverage_filter[:20].replace(' ', '_'))
     if doctor_filter:
         filename_parts.append(doctor_filter[:20].replace(' ', '_'))
     response["Content-Disposition"] = f"attachment; filename={'_'.join(filename_parts)}.pdf"
@@ -2265,8 +3147,69 @@ def export_pdf(request):
 # -------------------------------------------------------------
 # SEGUIMIENTO PUBLICO
 # -------------------------------------------------------------
+def _build_public_tracking_context(patient: Patient | None) -> dict:
+    if not patient:
+        return {}
+
+    review_statuses = {
+        Patient.STATUS_PENDIENTE,
+        Patient.STATUS_PENDIENTE_PRESTADOR,
+        Patient.STATUS_PENDIENTE_MEDICO,
+        Patient.STATUS_PENDIENTE_PACIENTE,
+        Patient.STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO,
+        Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE,
+    }
+    final_statuses = {
+        Patient.STATUS_AUTORIZADO,
+        Patient.STATUS_REALIZADO,
+    }
+    exception_statuses = {
+        Patient.STATUS_RECHAZO_COBERTURA,
+        Patient.STATUS_REPROGRAMADO,
+        Patient.STATUS_SUSPENDIDA,
+        Patient.STATUS_CANCELA_MEDICO,
+        Patient.STATUS_CANCELA_PTE,
+    }
+
+    status = patient.status
+    if status in final_statuses:
+        current_step = 3
+        tone = "success"
+        title = "Solicitud autorizada"
+        message = "La autorizacion ya figura lista en el sistema."
+    elif status in exception_statuses:
+        current_step = 2
+        tone = "warning" if status == Patient.STATUS_REPROGRAMADO else "danger"
+        title = patient.get_status_display()
+        message = "El equipo de autorizaciones revisara este caso y se comunicara si necesita nueva documentacion."
+    elif status in review_statuses:
+        current_step = 2
+        tone = "info"
+        title = "Solicitud en revision"
+        message = "La documentacion fue recibida y esta siendo gestionada por el equipo correspondiente."
+    else:
+        current_step = 1
+        tone = "info"
+        title = patient.get_status_display()
+        message = "La solicitud fue registrada correctamente."
+
+    steps = [
+        {"number": 1, "label": "Recibida", "state": "done" if current_step >= 1 else "pending"},
+        {"number": 2, "label": "En revision", "state": "done" if current_step > 2 else "current" if current_step == 2 else "pending"},
+        {"number": 3, "label": "Resolucion", "state": "done" if current_step >= 3 else "pending"},
+    ]
+
+    return {
+        "tracking_title": title,
+        "tracking_message": message,
+        "tracking_tone": tone,
+        "tracking_steps": steps,
+        "status_updated_at": patient.status_since or patient.updated_at,
+    }
+
+
 def tracking_view(request):
-    tracking_id = request.GET.get("id", "").strip()
+    tracking_id = request.GET.get("id", "").strip()[:32]
     patient = None
 
     if tracking_id:
@@ -2275,6 +3218,7 @@ def tracking_view(request):
     return render(request, "core/tracking_form.html", {
         "tracking_id": tracking_id,
         "patient": patient,
+        **_build_public_tracking_context(patient),
     })
 
 # -------------------------------------------------------------
@@ -2284,7 +3228,6 @@ def tracking_view(request):
 @require_POST
 def bulk_change_status(request):
     """Cambia el estado de múltiples pacientes"""
-    import json
     try:
         data = json.loads(request.body)
         patient_ids = data.get('patient_ids', [])
@@ -2298,19 +3241,50 @@ def bulk_change_status(request):
         if new_status not in valid_statuses:
             return JsonResponse({'success': False, 'error': 'Estado inválido'})
         
-        # Actualizar pacientes
-        updated = Patient.objects.filter(pk__in=patient_ids).update(status=new_status)
-        
-        return JsonResponse({'success': True, 'updated': updated})
+        # Validar y convertir patient_ids a enteros (los data-attributes HTML llegan como strings)
+        if not isinstance(patient_ids, list):
+            return JsonResponse({'success': False, 'error': 'Datos inválidos'})
+        try:
+            patient_ids = [int(i) for i in patient_ids]
+        except (ValueError, TypeError):
+            return JsonResponse({'success': False, 'error': 'Datos inválidos'})
+
+        # Actualizar pacientes uno a uno para disparar signals e invalidar caché
+        patients = Patient.objects.filter(pk__in=patient_ids)
+        updated = 0
+        authorized_email_sent = 0
+        authorized_email_failed = 0
+        authorized_email_missing = 0
+        for patient in patients:
+            old_status = patient.status
+            patient.status = new_status
+            # Incluir solicitado_since para que el pre_save signal pueda actualizarlo
+            patient.save(update_fields=['status', 'updated_at', 'solicitado_since'])
+            updated += 1
+            if old_status != Patient.STATUS_AUTORIZADO and new_status == Patient.STATUS_AUTORIZADO:
+                if not patient.email:
+                    authorized_email_missing += 1
+                elif _send_patient_authorized_email(request, patient):
+                    authorized_email_sent += 1
+                else:
+                    authorized_email_failed += 1
+
+        return JsonResponse({
+            'success': True,
+            'updated': updated,
+            'authorized_email_sent': authorized_email_sent,
+            'authorized_email_failed': authorized_email_failed,
+            'authorized_email_missing': authorized_email_missing,
+        })
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception("Error en bulk_change_status")
+        return JsonResponse({'success': False, 'error': 'Error interno al procesar la solicitud'})
 
 
 @login_required
 @require_POST
 def bulk_assign_user(request):
     """Asigna un usuario a múltiples pacientes"""
-    import json
     try:
         data = json.loads(request.body)
         patient_ids = data.get('patient_ids', [])
@@ -2419,6 +3393,3 @@ def update_user_permissions(request):
         messages.error(request, "Usuario no encontrado")
     
     return redirect('core:user_management')
-
-
-

@@ -10,8 +10,10 @@ urlpatterns = [
     path('', include(('core.urls', 'core'), namespace='core')),
 ]
 
-if settings.DEBUG:
+if settings.DEBUG or os.getenv('SERVE_MEDIA', '1').lower() in {'1', 'true', 'yes', 'on'}:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+if settings.DEBUG:
     # Include debug toolbar only when explicitly enabled and installed.
     if os.getenv('ENABLE_DEBUG_TOOLBAR', '0') == '1' and 'debug_toolbar' in settings.INSTALLED_APPS:
         import debug_toolbar

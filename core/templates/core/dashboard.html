@@ -3,188 +3,251 @@
 
 {% block content %}
 
-<section class="card">
-  <div class="card-header">
-    <h2>Resumen general</h2>
-    <p class="card-sub">
-      Visión rápida del volumen de solicitudes cargadas en el sistema.
-    </p>
+<header class="page-heading">
+  <div>
+    <span class="page-eyebrow">Administración Quirúrgica</span>
+    <h1>Panel operativo</h1>
+    <p>Resumen de solicitudes, agenda y estados de autorización.</p>
   </div>
+</header>
 
-  <p class="big-number">{{ total }}</p>
-  <p>Total de solicitudes cargadas históricamente.</p>
+<!-- FILA DE STATS RÁPIDAS -->
+<div class="dash-stats-row">
+  <div class="dash-stat-card">
+    <span class="dash-stat-value">{{ total }}</span>
+    <span class="dash-stat-label">Total histórico</span>
+  </div>
+  <div class="dash-stat-card">
+    <span class="dash-stat-value">{{ total_mes }}</span>
+    <span class="dash-stat-label">Este mes</span>
+  </div>
+  <div class="dash-stat-card">
+    <span class="dash-stat-value">{{ total_semana }}</span>
+    <span class="dash-stat-label">Últimos 7 días</span>
+  </div>
+  <div class="dash-stat-card dash-stat-action">
+    <a href="{% url 'core:qr_patient_create' %}" class="btn-primary">+ Nueva solicitud</a>
+    <a href="{% url 'core:admission_patient_create' %}" class="btn-secondary">Carga admision</a>
+  </div>
+</div>
 
-  <ul>
-    <li>En el mes actual: <strong>{{ total_mes }}</strong></li>
-    <li>Últimos 7 días: <strong>{{ total_semana }}</strong></li>
-  </ul>
-</section>
+<!-- GRID PRINCIPAL: agenda + estados -->
+<div class="dash-main-grid">
 
+  <!-- AGENDA HOY -->
+  <section class="card dash-agenda-card">
+    <div class="card-header">
+      <h2>Hoy <span class="dash-date-chip">{{ hoy|date:"d/m/Y" }}</span></h2>
+      <a href="{% url 'core:calendar' %}?agenda=saavedra" class="btn-ghost btn-small">Abrir agendas quirófano</a>
+    </div>
+
+    {% if proximas_hoy %}
+      <ul class="agenda-list">
+        {% for p in proximas_hoy %}
+          <li class="agenda-item is-danger">
+            <a href="{% url 'core:patient_detail' p.pk %}" class="agenda-row agenda-link">
+              <div class="agenda-left">
+                <span class="agenda-dot is-danger"></span>
+                <div>
+                  <strong class="agenda-patient">{{ p.full_name }}</strong>
+                  <div class="agenda-meta">{{ p.service }} · {{ p.coverage }}</div>
+                </div>
+              </div>
+              <div class="agenda-right">
+                {% if p.status == 'AUTORIZADO' %}
+                  <span class="badge badge-autorizado">{{ p.get_status_display }}</span>
+                {% elif p.status == 'PENDIENTE_ENVIO_PRESTADOR' %}
+                  <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+                {% elif p.status == 'PENDIENTE_PRESTADOR' %}
+                  <span class="badge badge-solicitado">{{ p.get_status_display }}</span>
+                {% elif p.status == 'PENDIENTE_MEDICO' or p.status == 'PENDIENTE_PACIENTE' %}
+                  <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+                {% elif p.status == 'AUTORIZADO_MATERIAL_PEND' %}
+                  <span class="badge badge-material">{{ p.get_status_display }}</span>
+                {% elif p.status == 'PEND_COMERCIAL_PRESUPUESTO' %}
+                  <span class="badge badge-presupuesto">{{ p.get_status_display }}</span>
+                {% elif p.status == 'RECHAZO_COBERTURA' %}
+                  <span class="badge badge-rechazado">{{ p.get_status_display }}</span>
+                {% elif p.status == 'REPROGRAMADO' %}
+                  <span class="badge badge-reprogramado">{{ p.get_status_display }}</span>
+                {% elif p.status == 'REALIZADO' %}
+                  <span class="badge badge-success">{{ p.get_status_display }}</span>
+                {% elif p.status == 'CANCELA_MEDICO' or p.status == 'CANCELA_PTE' %}
+                  <span class="badge badge-suspendida">{{ p.get_status_display }}</span>
+                {% else %}
+                  <span class="badge">{{ p.get_status_display }}</span>
+                {% endif %}
+              </div>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-secondary dash-empty">Sin cirugías para hoy.</p>
+    {% endif %}
+  </section>
+
+  <!-- PRÓXIMOS 7 DÍAS -->
+  <section class="card dash-agenda-card">
+    <div class="card-header">
+      <h2>Próximos 7 días</h2>
+      <a href="{% url 'core:patient_list' %}" class="btn-ghost btn-small">Ver listado</a>
+    </div>
+
+    {% if proximas_semana %}
+      <ul class="agenda-list">
+        {% for item in proximas_semana %}
+          {% with p=item.patient d=item.days_until %}
+          <li class="agenda-item {% if d <= 2 %}is-warning{% else %}is-primary{% endif %}">
+            <a href="{% url 'core:patient_detail' p.pk %}" class="agenda-row agenda-link">
+              <div class="agenda-left">
+                <span class="agenda-dot {% if d <= 2 %}is-warning{% else %}is-primary{% endif %}"></span>
+                <div>
+                  <strong class="agenda-patient">{{ p.full_name }}</strong>
+                  <div class="agenda-meta">{{ p.service }} · {{ p.coverage }}</div>
+                </div>
+              </div>
+              <div class="agenda-right">
+                <span class="dash-days-badge {% if d <= 2 %}is-warning{% else %}is-primary{% endif %}">
+                  {% if d == 1 %}mañana{% else %}en {{ d }} días{% endif %}
+                </span>
+                <span class="dash-date-label">{{ p.planned_date|date:"d/m" }}</span>
+              </div>
+            </a>
+          </li>
+          {% endwith %}
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-secondary dash-empty">Sin cirugías en los próximos 7 días.</p>
+    {% endif %}
+  </section>
+
+</div><!-- /dash-main-grid -->
+
+<!-- ESTADO DE SOLICITUDES -->
 <section class="card">
   <div class="card-header">
     <h2>Estado de solicitudes</h2>
-    <p class="card-sub">
-      Cómo se distribuyen las solicitudes según su estado actual.
-    </p>
+    <a href="{% url 'core:patient_list' %}" class="btn-ghost btn-small">Ver todas</a>
   </div>
 
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Estado</th>
-        <th>Cantidad</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in status_summary %}
-        <tr>
-          <td>{{ row.label }}</td>
-          <td>{{ row.count }}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
-
-<section class="card">
-  <div class="card-header">
-    <h2>Agenda de cirugías</h2>
-    <p class="card-sub">
-      Lo que está programado para hoy y los próximos 7 días.
-    </p>
-  </div>
-
-  <h3>Hoy ({{ hoy|date:"d/m/Y" }})</h3>
-  <ul class="agenda-list">
-    {% for p in proximas_hoy %}
-      <li class="agenda-item">
-        <div class="agenda-row">
-          <div class="agenda-left">
-            <span class="agenda-dot is-danger"></span>
-            <div>
-              <strong class="agenda-patient">{{ p.full_name }}</strong>
-              <div class="agenda-meta">
-                {{ p.service }} • {{ p.coverage }}
-              </div>
-            </div>
-          </div>
-          <strong class="agenda-date is-danger">{{ p.planned_date|date:"d/m/Y" }}</strong>
-        </div>
-      </li>
-    {% empty %}
-      <li class="text-secondary">No hay cirugías para hoy.</li>
-    {% endfor %}
-  </ul>
-
-  <h3 class="mt-4">Próximos 7 días</h3>
-  <ul class="agenda-list">
-    {% for p in proximas_semana %}
-      {% with dias_faltantes=p.planned_date|timeuntil %}
-        {% if "day" in dias_faltantes or "día" in dias_faltantes %}
-          {% if "1 day" in dias_faltantes or "1 día" in dias_faltantes or dias_faltantes|slice:":6" == "2 days" or dias_faltantes|slice:":7" == "2 días" %}
-            <li class="agenda-item is-warning">
-              <div class="agenda-row">
-                <div class="agenda-left">
-                  <span class="agenda-dot is-warning"></span>
-                  <div>
-                    <strong class="agenda-patient">{{ p.full_name }}</strong>
-                    <div class="agenda-meta">
-                      {{ p.service }} • {{ p.coverage }}
-                    </div>
-                  </div>
-                </div>
-                <strong class="agenda-date is-warning">{{ p.planned_date|date:"d/m/Y" }}</strong>
-              </div>
-            </li>
-          {% else %}
-            <li class="agenda-item is-primary">
-              <div class="agenda-row">
-                <div class="agenda-left">
-                  <span class="agenda-dot is-primary"></span>
-                  <div>
-                    <strong class="agenda-patient">{{ p.full_name }}</strong>
-                    <div class="agenda-meta">
-                      {{ p.service }} • {{ p.coverage }}
-                    </div>
-                  </div>
-                </div>
-                <strong class="agenda-date is-primary">{{ p.planned_date|date:"d/m/Y" }}</strong>
-              </div>
-            </li>
+  <div class="dash-status-grid">
+    {% for row in status_summary %}
+      <a href="{% url 'core:patient_list' %}?status={{ row.code }}" class="dash-status-tile">
+        <span class="dash-status-count">{{ row.count }}</span>
+        <span class="dash-status-name
+          {% if row.code == 'PENDIENTE_ENVIO_PRESTADOR' %}is-pendiente
+          {% elif row.code == 'PENDIENTE_PRESTADOR' %}is-solicitado
+          {% elif row.code == 'PENDIENTE_MEDICO' or row.code == 'PENDIENTE_PACIENTE' %}is-pendiente
+          {% elif row.code == 'AUTORIZADO' %}is-autorizado
+          {% elif row.code == 'PEND_COMERCIAL_PRESUPUESTO' %}is-presupuesto
+          {% elif row.code == 'AUTORIZADO_MATERIAL_PEND' %}is-material
+          {% elif row.code == 'RECHAZO_COBERTURA' %}is-rechazado
+          {% elif row.code == 'REPROGRAMADO' %}is-reprogramado
+          {% elif row.code == 'CANCELA_MEDICO' or row.code == 'CANCELA_PTE' %}is-rechazado
           {% endif %}
-        {% else %}
-          <li class="agenda-item is-primary">
-            <div class="agenda-row">
-              <div class="agenda-left">
-                <span class="agenda-dot is-primary"></span>
-                <div>
-                  <strong class="agenda-patient">{{ p.full_name }}</strong>
-                  <div class="agenda-meta">
-                    {{ p.service }} • {{ p.coverage }}
-                  </div>
-                </div>
-              </div>
-              <strong class="agenda-date is-primary">{{ p.planned_date|date:"d/m/Y" }}</strong>
+        ">{{ row.label }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- FILA INFERIOR: top servicios + coberturas + últimas -->
+<div class="dash-bottom-grid">
+
+  <!-- TOP SERVICIOS -->
+  <section class="card">
+    <div class="card-header">
+      <h2>Top servicios</h2>
+    </div>
+    <ul class="dash-top-list">
+      {% for s in top_servicios %}
+        <li class="dash-top-item">
+          <a href="{% url 'core:patient_list' %}?service={{ s.service|urlencode }}" class="dash-top-link">
+            <span class="dash-top-name">{{ s.service }}</span>
+            <span class="dash-top-count">{{ s.c }}</span>
+          </a>
+          <div class="dash-top-bar">
+            <div class="dash-top-fill" style="width: {% widthratio s.c top_servicios.0.c 100 %}%"></div>
+          </div>
+        </li>
+      {% empty %}
+        <li class="text-secondary">Sin datos.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <!-- TOP COBERTURAS -->
+  <section class="card">
+    <div class="card-header">
+      <h2>Top coberturas</h2>
+    </div>
+    <ul class="dash-top-list">
+      {% for c in top_coberturas %}
+        <li class="dash-top-item">
+          <a href="{% url 'core:patient_list' %}?coverage={{ c.coverage|urlencode }}" class="dash-top-link">
+            <span class="dash-top-name">{{ c.coverage }}</span>
+            <span class="dash-top-count">{{ c.c }}</span>
+          </a>
+          <div class="dash-top-bar">
+            <div class="dash-top-fill" style="width: {% widthratio c.c top_coberturas.0.c 100 %}%"></div>
+          </div>
+        </li>
+      {% empty %}
+        <li class="text-secondary">Sin datos.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <!-- ÚLTIMAS SOLICITUDES -->
+  <section class="card">
+    <div class="card-header">
+      <h2>Últimas ingresadas</h2>
+      <a href="{% url 'core:patient_list' %}" class="btn-ghost btn-small">Ver todas</a>
+    </div>
+    <ul class="dash-recent-list">
+      {% for p in ultimas %}
+        <li class="dash-recent-item">
+          <a href="{% url 'core:patient_detail' p.pk %}" class="dash-recent-link">
+            <div class="dash-recent-left">
+              <strong class="dash-recent-name">{{ p.full_name }}</strong>
+              <span class="dash-recent-meta">{{ p.service }} · {{ p.coverage }}</span>
             </div>
-          </li>
-        {% endif %}
-      {% endwith %}
-    {% empty %}
-      <li class="text-secondary">No hay cirugías en los próximos 7 días.</li>
-    {% endfor %}
-  </ul>
-</section>
+            <div class="dash-recent-right">
+              {% if p.status == 'AUTORIZADO' %}
+                <span class="badge badge-autorizado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'PENDIENTE_ENVIO_PRESTADOR' %}
+                <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+              {% elif p.status == 'PENDIENTE_PRESTADOR' %}
+                <span class="badge badge-solicitado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'PENDIENTE_MEDICO' or p.status == 'PENDIENTE_PACIENTE' %}
+                <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+              {% elif p.status == 'AUTORIZADO_MATERIAL_PEND' %}
+                <span class="badge badge-material">{{ p.get_status_display }}</span>
+              {% elif p.status == 'PEND_COMERCIAL_PRESUPUESTO' %}
+                <span class="badge badge-presupuesto">{{ p.get_status_display }}</span>
+              {% elif p.status == 'RECHAZO_COBERTURA' %}
+                <span class="badge badge-rechazado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'REPROGRAMADO' %}
+                <span class="badge badge-reprogramado">{{ p.get_status_display }}</span>
+              {% elif p.status == 'REALIZADO' %}
+                <span class="badge badge-success">{{ p.get_status_display }}</span>
+              {% elif p.status == 'CANCELA_MEDICO' or p.status == 'CANCELA_PTE' %}
+                <span class="badge badge-suspendida">{{ p.get_status_display }}</span>
+              {% else %}
+                <span class="badge">{{ p.get_status_display }}</span>
+              {% endif %}
+              <span class="dash-recent-date">{{ p.created_at|date:"d/m H:i" }}</span>
+            </div>
+          </a>
+        </li>
+      {% empty %}
+        <li class="text-secondary dash-empty">Todavía no hay solicitudes.</li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<section class="card">
-  <div class="card-header">
-    <h2>Servicios y coberturas más frecuentes</h2>
-    <p class="card-sub">
-      Top 5 según la cantidad total de solicitudes.
-    </p>
-  </div>
-
-  <div class="form-grid">
-    <div>
-      <h3>Servicios</h3>
-      <ul>
-        {% for s in top_servicios %}
-          <li>{{ s.service }}: <strong>{{ s.c }}</strong></li>
-        {% empty %}
-          <li>Sin datos.</li>
-        {% endfor %}
-      </ul>
-    </div>
-    <div>
-      <h3>Coberturas</h3>
-      <ul>
-        {% for c in top_coberturas %}
-          <li>{{ c.coverage }}: <strong>{{ c.c }}</strong></li>
-        {% empty %}
-          <li>Sin datos.</li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-</section>
-
-<section class="card">
-  <div class="card-header">
-    <h2>Últimas solicitudes cargadas</h2>
-    <p class="card-sub">
-      Las últimas 5 solicitudes ingresadas al sistema.
-    </p>
-  </div>
-
-  <ul>
-    {% for p in ultimas %}
-      <li>
-        <strong>{{ p.created_at|date:"d/m/Y H:i" }}</strong>
-        – {{ p.full_name }} ({{ p.service }}) – {{ p.coverage }} – {{ p.get_status_display }}
-      </li>
-    {% empty %}
-      <li>Todavía no hay solicitudes cargadas.</li>
-    {% endfor %}
-  </ul>
-</section>
+</div><!-- /dash-bottom-grid -->
 
 {% endblock %}

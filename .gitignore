@@ -5,12 +5,31 @@ __pycache__/
 
 # Entorno virtual
 .venv/
+venv/
 env/
 
 # Django
 /media/
 staticfiles/
 *.sqlite3
+*.sqlite3.*
+*.db
+*.db-*
+*.bak*
+*.dump
+*.sql
+
+# Datos locales generados
+.automation/
+.claude/
+tmp/
+tools/*.exe
+core/.agenda_*.lock
+core/agenda_*_data/
+core/saavedra_portable_data/
+
+# Logs
+*.log
 
 # Sistema
 Thumbs.db

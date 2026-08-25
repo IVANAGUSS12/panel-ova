@@ -3,12 +3,16 @@
   // --------- helpers ----------
   const STATUS_LABELS = {
     AUTORIZADO: "Autorizado",
-    PRESUPUESTO_SI: "Presupuesto sí",
-    SOLICITADO: "Solicitado",
-    MATERIAL_PENDIENTE: "Material pendiente",
+    PEND_COMERCIAL_PRESUPUESTO: "Pendiente comercial - presupuesto",
+    PENDIENTE_PRESTADOR: "Pendiente prestador",
+    PENDIENTE_MEDICO: "Pendiente medico",
+    PENDIENTE_PACIENTE: "Pendiente paciente",
+    AUTORIZADO_MATERIAL_PEND: "Autorizado - material pendiente",
     PENDIENTE: "Pendiente",
-    RECHAZO: "Rechazo",
+    RECHAZO_COBERTURA: "Rechazo cobertura",
     REPROGRAMADO: "Reprogramado",
+    CANCELA_MEDICO: "Cancela medico",
+    CANCELA_PTE: "Cancela pte",
   };
 
   function prettyStatus(code) {
@@ -34,9 +38,9 @@
     return u.toString();
   }
 
-  function updateExportLinks(from, to, service, doctor, dateField) {
+  function updateExportLinks(from, to, service, coverage, doctor, dateField) {
     // Actualizar los enlaces de exportación con las fechas y filtros seleccionados
-    const params = qs({ from, to, service: service || "", doctor: doctor || "", date_field: dateField || "planned_date" });
+    const params = qs({ from, to, service: service || "", coverage: coverage || "", doctor: doctor || "", date_field: dateField || "planned_date" });
     const excelBtn = document.getElementById("exportExcelBtn");
     const pdfBtn = document.getElementById("exportPdfBtn");
     
@@ -501,7 +505,7 @@
   function buildStatusSet(payload) {
     const set = new Set();
     (payload.overall?.by_status || []).forEach(r => set.add(r.status));
-    const preferred = ["AUTORIZADO", "PRESUPUESTO_SI", "SOLICITADO", "MATERIAL_PENDIENTE", "PENDIENTE", "RECHAZO", "REPROGRAMADO"];
+    const preferred = ["AUTORIZADO", "AUTORIZADO_MATERIAL_PEND", "PEND_COMERCIAL_PRESUPUESTO", "PENDIENTE_PRESTADOR", "PENDIENTE_MEDICO", "PENDIENTE_PACIENTE", "PENDIENTE_ENVIO_PRESTADOR", "RECHAZO_COBERTURA", "REPROGRAMADO", "CANCELA_MEDICO", "CANCELA_PTE"];
     const final = [];
     preferred.forEach(s => { if (set.has(s)) final.push(s); });
     [...set].forEach(s => { if (!final.includes(s)) final.push(s); });
@@ -557,8 +561,9 @@
 
   function populateMainFilters(payload) {
     const serviceSelect = document.getElementById("filter_service");
+    const coverageSelect = document.getElementById("filter_coverage");
     const doctorSelect = document.getElementById("filter_doctor");
-    if (!serviceSelect || !doctorSelect) return;
+    if (!serviceSelect || !coverageSelect || !doctorSelect) return;
 
     if (!filtersLoaded) {
       const services = payload.all_services || [];
@@ -569,7 +574,16 @@
         serviceSelect.appendChild(option);
       });
 
+      const coverages = payload.all_coverages || [];
+      coverages.forEach(coverage => {
+        const option = document.createElement("option");
+        option.value = coverage;
+        option.textContent = coverage;
+        coverageSelect.appendChild(option);
+      });
+
       serviceSelect.addEventListener("change", () => refresh().catch(console.error));
+      coverageSelect.addEventListener("change", () => refresh().catch(console.error));
       doctorSelect.addEventListener("change", () => refresh().catch(console.error));
       filtersLoaded = true;
     }
@@ -618,11 +632,12 @@
     });
   }
 
-  async function fetchStats(fromISO, toISO, service, doctor, dateField) {
+  async function fetchStats(fromISO, toISO, service, coverage, doctor, dateField) {
     const params = {
       from: fromISO || "",
       to: toISO || "",
       service: service || "",
+      coverage: coverage || "",
       doctor: doctor || "",
       date_field: dateField || "planned_date"
     };
@@ -636,13 +651,14 @@
     const from = document.getElementById("stats_from").value;
     const to = document.getElementById("stats_to").value;
     const service = document.getElementById("filter_service").value;
+    const coverage = document.getElementById("filter_coverage").value;
     const doctor = document.getElementById("filter_doctor").value;
     const dateField = document.getElementById("date_field")?.value || "planned_date";
     
     const fromISO = parseDDMMYYYY(from);
     const toISO = parseDDMMYYYY(to);
 
-    const payload = await fetchStats(fromISO, toISO, service, doctor, dateField);
+    const payload = await fetchStats(fromISO, toISO, service, coverage, doctor, dateField);
     lastPayload = payload;
     populateMainFilters(payload);
 
@@ -667,7 +683,7 @@
     renderServiceDetail(payload, "");
     
     // Actualizar enlaces de exportación con fechas y filtros
-    updateExportLinks(fromISO, toISO, service, doctor, dateField);
+    updateExportLinks(fromISO, toISO, service, coverage, doctor, dateField);
   }
 
   document.addEventListener("DOMContentLoaded", async function () {

@@ -52,10 +52,12 @@ Calendario-Quirofano {{ date|date:"d/m/Y" }} - Panel OVA
         <label>Estado operativo</label>
         <select name="workflow" class="form-control">
           <option value="">Todos</option>
-          <option value="PENDIENTE" {% if filters.workflow == 'PENDIENTE' %}selected{% endif %}>Pendiente</option>
-          <option value="SOLICITADO" {% if filters.workflow == 'SOLICITADO' %}selected{% endif %}>Solicitado</option>
+          <option value="PENDIENTE_ENVIO_PRESTADOR" {% if filters.workflow == 'PENDIENTE_ENVIO_PRESTADOR' %}selected{% endif %}>Pendiente envio prestador</option>
+          <option value="PENDIENTE_PRESTADOR" {% if filters.workflow == 'PENDIENTE_PRESTADOR' %}selected{% endif %}>Pendiente prestador</option>
+          <option value="PENDIENTE_MEDICO" {% if filters.workflow == 'PENDIENTE_MEDICO' %}selected{% endif %}>Pendiente medico</option>
+          <option value="PENDIENTE_PACIENTE" {% if filters.workflow == 'PENDIENTE_PACIENTE' %}selected{% endif %}>Pendiente paciente</option>
           <option value="AUTORIZADO" {% if filters.workflow == 'AUTORIZADO' %}selected{% endif %}>Autorizado</option>
-          <option value="MATERIAL_PENDIENTE" {% if filters.workflow == 'MATERIAL_PENDIENTE' %}selected{% endif %}>Material pendiente</option>
+          <option value="AUTORIZADO_MATERIAL_PEND" {% if filters.workflow == 'AUTORIZADO_MATERIAL_PEND' %}selected{% endif %}>Autorizado - material pendiente</option>
         </select>
       </div>
       <div class="form-group">
@@ -132,10 +134,12 @@ Calendario-Quirofano {{ date|date:"d/m/Y" }} - Panel OVA
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ current_path }}">
                   <select name="manual_workflow_status" class="form-control form-control-sm">
-                    <option value="PENDIENTE" {% if entry.manual_workflow_status == 'PENDIENTE' or not entry.manual_workflow_status %}selected{% endif %}>Pendiente</option>
-                    <option value="SOLICITADO" {% if entry.manual_workflow_status == 'SOLICITADO' %}selected{% endif %}>Solicitado</option>
+                    <option value="PENDIENTE_ENVIO_PRESTADOR" {% if entry.manual_workflow_status == 'PENDIENTE_ENVIO_PRESTADOR' or not entry.manual_workflow_status %}selected{% endif %}>Pendiente envio prestador</option>
+                    <option value="PENDIENTE_PRESTADOR" {% if entry.manual_workflow_status == 'PENDIENTE_PRESTADOR' %}selected{% endif %}>Pendiente prestador</option>
+                    <option value="PENDIENTE_MEDICO" {% if entry.manual_workflow_status == 'PENDIENTE_MEDICO' %}selected{% endif %}>Pendiente medico</option>
+                    <option value="PENDIENTE_PACIENTE" {% if entry.manual_workflow_status == 'PENDIENTE_PACIENTE' %}selected{% endif %}>Pendiente paciente</option>
                     <option value="AUTORIZADO" {% if entry.manual_workflow_status == 'AUTORIZADO' %}selected{% endif %}>Autorizado</option>
-                    <option value="MATERIAL_PENDIENTE" {% if entry.manual_workflow_status == 'MATERIAL_PENDIENTE' %}selected{% endif %}>Material pendiente</option>
+                    <option value="AUTORIZADO_MATERIAL_PEND" {% if entry.manual_workflow_status == 'AUTORIZADO_MATERIAL_PEND' %}selected{% endif %}>Autorizado - material pendiente</option>
                   </select>
                   <button type="submit" class="btn-secondary btn-small">Guardar</button>
                 </form>

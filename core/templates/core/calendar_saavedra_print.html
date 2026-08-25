@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Programacion diaria Saavedra</title>
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; width: 297mm; min-height: 210mm; }
+    body { font-family: Arial, sans-serif; color: #111827; font-size: 10px; }
+    .a4-page { width: 297mm; height: 210mm; padding: 4mm; overflow: hidden; background: white; }
+    #printContent { transform-origin: top left; width: 289mm; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #111827; padding-bottom: 3px; margin-bottom: 4px; }
+    h1 { margin: 0; font-size: 13px; }
+    .muted { color: #64748b; }
+    .count { font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; table-layout: auto; }
+    th, td { border: 1px solid #cbd5e1; padding: 2px 3px; vertical-align: top; line-height: 1.12; overflow-wrap: anywhere; }
+    th { background: #eef2f7; text-align: left; font-size: 9px; }
+    tr { page-break-inside: avoid; }
+    .time { width: 4%; font-weight: 700; white-space: nowrap; }
+    .patient { width: 12%; font-weight: 700; }
+    .age { width: 4%; white-space: nowrap; }
+    .coverage { width: 10%; }
+    .service { width: 20%; }
+    .doctor { width: 12%; }
+    .dest { width: 9%; }
+    .bed { width: 4%; font-weight: 700; }
+    .stay { width: 4%; text-align: center; font-weight: 700; white-space: nowrap; }
+    .obs { width: 21%; }
+    .row-ambulatorio td { background: #e5e7eb; color: #111827; }
+    .row-ambulatorio .dest { font-weight: 700; }
+    .auto { display: inline-block; margin-top: 1px; padding: 0 2px; border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; font-weight: 700; }
+    @media print {
+      html, body { width: 297mm; height: 210mm; overflow: hidden; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; zoom: 1 !important; }
+      .a4-page { page-break-after: avoid; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body class="{{ fit_class }}">
+  <main class="a4-page">
+    <div id="printContent">
+      <header>
+        <div>
+          <h1>Programacion diaria de quirofano e internaciones</h1>
+          <div>Fecha: {{ fecha }} | Sede: Saavedra | <span class="count">{{ rows|length }} pacientes</span></div>
+        </div>
+        <div class="muted">Ordenado por horario</div>
+      </header>
+
+      <table>
+        <colgroup>
+          <col class="time">
+          <col class="patient">
+          <col class="age">
+          <col class="coverage">
+          <col class="service">
+          <col class="doctor">
+          <col class="dest">
+          <col class="bed">
+          <col class="stay">
+          <col class="obs">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="time">Hora</th>
+            <th class="patient">Paciente</th>
+            <th class="age">Edad</th>
+            <th class="coverage">Obra social</th>
+            <th class="service">Intervencion / motivo</th>
+            <th class="doctor">Cirujano / medico</th>
+            <th class="dest">Destino</th>
+            <th class="bed">Cama</th>
+            <th class="stay">Estadía</th>
+            <th class="obs">Obs.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in rows %}
+            <tr class="{% if item.ambulatory_destino %}row-ambulatorio{% endif %}">
+              <td>{{ item.horario }}</td>
+              <td>{{ item.paciente }}{% if item.auto %}<br><span class="auto">Automatica</span>{% endif %}</td>
+              <td>{{ item.edad }}</td>
+              <td>{{ item.obra_social }}</td>
+              <td>{{ item.prestacion }}</td>
+              <td>{{ item.profesional }}</td>
+              <td class="dest">{{ item.destino }}</td>
+              <td>{{ item.cama }}</td>
+              <td class="stay">{% if item.estadia %}{{ item.estadia }} d{% endif %}</td>
+              <td>{{ item.observaciones }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="10">Sin pacientes para la fecha.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </main>
+  <script>
+    function mmToPx(mm) {
+      return mm * 96 / 25.4;
+    }
+
+    function fitToA4() {
+      const content = document.getElementById("printContent");
+      if (!content) return;
+
+      const availableWidth = mmToPx(289);
+      const availableHeight = mmToPx(202);
+      content.style.transform = "scale(1)";
+      content.style.width = `${availableWidth}px`;
+      content.style.fontSize = "";
+
+      let width = content.scrollWidth || availableWidth;
+      let height = content.scrollHeight || availableHeight;
+      let scale = Math.min(1, availableWidth / width, availableHeight / height);
+
+      content.style.width = `${availableWidth / scale}px`;
+      height = content.scrollHeight || height;
+      scale = Math.min(scale, availableHeight / height);
+      scale = Math.max(scale, 0.25);
+
+      content.style.transform = `scale(${scale})`;
+      content.style.transformOrigin = "top left";
+      content.dataset.printScale = scale.toFixed(3);
+    }
+
+    window.addEventListener("beforeprint", fitToA4);
+    window.addEventListener("load", () => {
+      fitToA4();
+      window.setTimeout(() => {
+        fitToA4();
+        window.print();
+      }, 120);
+    });
+  </script>
+</body>
+</html>

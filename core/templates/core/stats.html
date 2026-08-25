@@ -19,13 +19,13 @@
   </div>
 
   <!-- FILTROS FECHA -->
-  <form class="filters" onsubmit="return false;">
+  <form class="filters" onsubmit="return false;" aria-label="Filtros de estadísticas">
     <div class="form-group">
-      <label for="stats_from">Desde</label>
-      <input id="stats_from" type="text" class="form-control" placeholder="dd/mm/aaaa">
+      <label for="stats_from">Fecha desde</label>
+      <input id="stats_from" type="text" class="form-control" placeholder="dd/mm/aaaa" aria-describedby="stats-date-hint">
     </div>
     <div class="form-group">
-      <label for="stats_to">Hasta</label>
+      <label for="stats_to">Fecha hasta</label>
       <input id="stats_to" type="text" class="form-control" placeholder="dd/mm/aaaa">
     </div>
     <div class="form-group">
@@ -42,17 +42,24 @@
       </select>
     </div>
     <div class="form-group">
+      <label for="filter_coverage">Cobertura</label>
+      <select id="filter_coverage" class="form-control">
+        <option value="">Todas las coberturas</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label for="filter_doctor">Profesional</label>
       <select id="filter_doctor" class="form-control">
         <option value="">Todos los profesionales</option>
       </select>
     </div>
     <div class="form-group">
-      <label>&nbsp;</label>
+      <label for="stats_apply" class="sr-only">Acciones</label>
       <button id="stats_apply" class="btn-primary" type="button">Aplicar</button>
-      <a id="stats_clear" href="{% url 'core:stats_view' %}" class="btn-ghost">Limpiar</a>
+      <a id="stats_clear" href="{% url 'core:stats_view' %}" class="btn-ghost" aria-label="Limpiar filtros de estadísticas">Limpiar</a>
     </div>
   </form>
+  <p id="stats-date-hint" class="sr-only">Usá el selector de fechas integrado. Las fechas se ingresan en formato dd/mm/aaaa.</p>
 
   <!-- RESUMEN -->
   <div class="stats-kpis">
@@ -193,5 +200,5 @@
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<script src="{% static 'core/js/stats.js' %}"></script>
+<script src="{% static 'core/js/stats.js' %}?v=20260528v1"></script>
 {% endblock %}

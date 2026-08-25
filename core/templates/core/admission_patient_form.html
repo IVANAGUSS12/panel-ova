@@ -1,0 +1,210 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Carga admision - Panel OVA{% endblock %}
+
+{% block extra_head %}
+<style>
+  body {
+    background:
+      radial-gradient(circle at 100% 35%, rgba(0, 122, 120, .10), transparent 32rem),
+      linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+  }
+
+  .admission-card {
+    width: min(100%, 820px);
+    margin: 0 auto 2rem;
+    padding: 2rem !important;
+    border: 1px solid rgba(207, 217, 232, .9);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 20px 45px rgba(31, 41, 55, .10);
+  }
+
+  .admission-header {
+    margin-bottom: 1.35rem;
+  }
+
+  .admission-header h1 {
+    margin: 0;
+    color: #172033;
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .admission-header p {
+    margin: .45rem 0 0;
+    color: #5f6f89;
+    line-height: 1.45;
+  }
+
+  .admission-form {
+    display: grid;
+    gap: 1.05rem;
+  }
+
+  .admission-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .admission-field,
+  .admission-file {
+    display: flex;
+    flex-direction: column;
+    gap: .42rem;
+  }
+
+  .admission-field-full {
+    grid-column: span 2;
+  }
+
+  .admission-field label,
+  .admission-file label {
+    color: #243044;
+    font-size: .88rem;
+    font-weight: 700;
+  }
+
+  .admission-field input,
+  .admission-field textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: .72rem .9rem;
+    border: 1px solid #cfd9e8;
+    border-radius: 10px;
+    background: #fff;
+    color: #172033;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .admission-field textarea {
+    min-height: 88px;
+    resize: vertical;
+  }
+
+  .admission-field input:focus,
+  .admission-field textarea:focus {
+    border-color: rgba(0, 122, 120, .72);
+    box-shadow: 0 0 0 3px rgba(0, 122, 120, .14);
+  }
+
+  .admission-file input {
+    width: 100%;
+    padding: .8rem;
+    border: 2px dashed #cfd9e8;
+    border-radius: 10px;
+    background: #fff;
+    color: #52616b;
+  }
+
+  .admission-help {
+    color: #6b778d;
+    font-size: .84rem;
+    line-height: 1.35;
+  }
+
+  .admission-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .75rem;
+    margin-top: .3rem;
+  }
+
+  .admission-success {
+    margin-bottom: 1.2rem;
+    padding: 1rem;
+    border: 1px solid #b7e4c7;
+    border-radius: 12px;
+    background: #ecfdf3;
+    color: #14532d;
+  }
+
+  .admission-code {
+    display: inline-block;
+    margin-top: .5rem;
+    color: #0b3b91;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+  }
+
+  @media (max-width: 700px) {
+    .admission-card {
+      padding: 1.25rem !important;
+    }
+
+    .admission-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .admission-field-full {
+      grid-column: span 1;
+    }
+
+    .admission-actions {
+      flex-direction: column;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="card admission-card">
+  <div class="admission-header">
+    <h1>Carga admision</h1>
+    <p>Formulario reducido para registrar al paciente y adjuntar ordenes. El DNI y los archivos son opcionales.</p>
+  </div>
+
+  {% if success %}
+    <div class="admission-success" role="status">
+      <strong>Carga guardada correctamente.</strong><br>
+      Codigo de seguimiento:
+      <span class="admission-code">{{ tracking_id }}</span>
+      <div style="margin-top:.85rem;">
+        <a href="{% url 'core:patient_detail' patient.pk %}" class="btn-primary">Ver solicitud</a>
+        <a href="{{ tracking_url }}" class="btn-secondary">Ver tracking</a>
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="admission-form" novalidate>
+    {% csrf_token %}
+
+    <div class="admission-grid">
+      <div class="admission-field">
+        <label for="id_last_name">Apellido pte</label>
+        <input type="text" id="id_last_name" name="last_name" value="{{ form_data.last_name|default:'' }}" autocomplete="family-name">
+      </div>
+
+      <div class="admission-field">
+        <label for="id_first_name">Nombre pte</label>
+        <input type="text" id="id_first_name" name="first_name" value="{{ form_data.first_name|default:'' }}" autocomplete="given-name">
+      </div>
+
+      <div class="admission-field admission-field-full">
+        <label for="id_dni">DNI</label>
+        <input type="text" id="id_dni" name="dni" value="{{ form_data.dni|default:'' }}" inputmode="numeric" autocomplete="off">
+        <span class="admission-help">Opcional. Se puede dejar vacio.</span>
+      </div>
+
+      <div class="admission-file admission-field-full">
+        <label for="id_ordenes_files">Ordenes</label>
+        <input type="file" id="id_ordenes_files" name="ordenes_files" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif">
+        <span class="admission-help">Puede adjuntar una o varias ordenes. No hace falta cargar foto de DNI ni credencial.</span>
+      </div>
+
+      <div class="admission-field admission-field-full">
+        <label for="id_external_observations">Observaciones</label>
+        <textarea id="id_external_observations" name="external_observations">{{ form_data.external_observations|default:'' }}</textarea>
+      </div>
+    </div>
+
+    <div class="admission-actions">
+      <button type="submit" class="btn-primary">Guardar carga</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

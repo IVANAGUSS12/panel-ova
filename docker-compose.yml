@@ -25,6 +25,27 @@ services:
     depends_on:
       - db
 
+  agenda-updater:
+    build: .
+    command: /bin/sh -c "python manage.py refresh_agendas --loop --interval-minutes ${AGENDA_REFRESH_INTERVAL_MINUTES:-20}"
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    env_file:
+      - .env
+    environment:
+      AUTO_REFRESH_AGENDAS: "0"
+    depends_on:
+      - db
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://web:5000
+    profiles:
+      - tunnel
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
   media_data:

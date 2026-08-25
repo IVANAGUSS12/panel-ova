@@ -38,18 +38,35 @@ def _env_truthy(name: str, default: bool = True) -> bool:
 
 
 def get_qr_download_settings(username: str | None = None, password: str | None = None) -> QRDownloadSettings:
-    username = (username or os.getenv('QR_REPORT_USER') or os.getenv('QR_REPORT_USERNAME') or '').strip()
-    password = (password or os.getenv('QR_REPORT_PASSWORD') or '').strip()
+    username = (
+        username
+        or os.getenv('QR_REPORT_USER')
+        or os.getenv('QR_REPORT_USERNAME')
+        or os.getenv('CEMIC_USER')
+        or ''
+    ).strip()
+    password = (
+        password
+        or os.getenv('QR_REPORT_PASSWORD')
+        or os.getenv('CEMIC_PASS')
+        or ''
+    ).strip()
     if not username or not password:
         raise RuntimeError(
-            'Falta usuario y/o contraseña QR. Cargalos en el formulario o en '
-            'QR_REPORT_USER / QR_REPORT_PASSWORD.'
+            'Falta usuario y/o contraseña. Configurá CEMIC_USER y CEMIC_PASS en el .env.'
         )
+    login_url = (
+        os.getenv('QR_REPORT_LOGIN_URL')
+        or os.getenv('CEMIC_LOGIN_URL')
+        or 'http://quirofanos.cemic.edu.ar/login.php'
+    ).strip()
+    # CEMIC_HEADLESS=0 en .env significa con ventana visible (para debug)
+    headless = _env_truthy('QR_PLAYWRIGHT_HEADLESS', default=True) and _env_truthy('CEMIC_HEADLESS', default=True)
     return QRDownloadSettings(
-        login_url=(os.getenv('QR_REPORT_LOGIN_URL') or 'http://quirofanos.cemic.edu.ar/login.php').strip(),
+        login_url=login_url,
         username=username,
         password=password,
-        headless=_env_truthy('QR_PLAYWRIGHT_HEADLESS', default=True),
+        headless=headless,
     )
 
 

@@ -2,10 +2,18 @@
 {% block title %}Solicitudes - Panel OVA{% endblock %}
 
 {% block content %}
+<header class="page-heading">
+  <div>
+    <span class="page-eyebrow">Gestión de autorizaciones</span>
+    <h1>Solicitudes quirúrgicas</h1>
+    <p>Consulta, filtra y gestiona la documentación de cada paciente.</p>
+  </div>
+</header>
+
 <section class="card">
   <div class="card-header">
     <div>
-      <h2>Solicitudes / Servicio</h2>
+      <h2>Listado de solicitudes</h2>
       <p class="card-sub">
         Listado filtrable por estado, cobertura, doctor, servicio,
         fechas de cirugía, fechas de carga y ordenamiento asc/desc.
@@ -14,6 +22,9 @@
     <div>
       <a href="{% url 'core:qr_patient_create' %}" class="btn-primary">
         + Nueva solicitud
+      </a>
+      <a href="{% url 'core:admission_patient_create' %}" class="btn-secondary">
+        Carga admision
       </a>
     </div>
   </div>
@@ -32,6 +43,15 @@
   </script>
 
   <!-- FILTROS -->
+  <div class="filters-toggle-bar">
+    <button type="button" id="toggleFilters" class="btn-ghost btn-small filters-toggle-btn" aria-expanded="false" aria-controls="filtersPanel">
+      <span class="filters-toggle-icon">▼</span> Filtros
+      {% with active=request.GET|length %}{% if active > 0 and request.GET.page is None or active > 1 %}<span class="filters-active-badge">activos</span>{% endif %}{% endwith %}
+    </button>
+    <span class="filters-count-label">{{ page_obj.paginator.count|default:0 }} resultado{% if page_obj.paginator.count != 1 %}s{% endif %}</span>
+  </div>
+
+  <div id="filtersPanel" class="filters-panel" hidden>
   <form method="get" class="filters">
 
     <div class="form-group">
@@ -109,6 +129,19 @@
       </datalist>
     </div>
 
+    <!-- SEDE -->
+    <div class="form-group">
+      <label for="id_sede">Sede</label>
+      <select name="sede" id="id_sede" class="form-control">
+        <option value="">Todas</option>
+        {% for value, label in form.sede.field.choices %}
+          {% if value %}
+            <option value="{{ value }}" {% if request.GET.sede == value %}selected{% endif %}>{{ label }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+
     <!-- USUARIO ASIGNADO -->
     <div class="form-group">
       <label for="id_assigned_to">Asignado a</label>
@@ -153,6 +186,7 @@
     <a href="{% url 'core:patient_list' %}?clear=1" class="btn-ghost">Limpiar filtros</a>
 
   </form>
+  </div><!-- /filtersPanel -->
 
   <!-- Acciones en lote -->
   <div class="bulk-actions-bar" id="bulkActionsBar" style="display: none;">
@@ -171,20 +205,33 @@
     </div>
   </div>
 
-  <div class="patient-table-wrap">
-    <table class="table">
+  <div class="patient-table-wrap" role="region" aria-label="Listado de pacientes">
+    <table class="table patient-list-table" aria-label="Solicitudes de pacientes">
+      <caption class="sr-only">Listado de solicitudes de pacientes con estado, cobertura y médico asignado</caption>
+      <colgroup>
+        <col class="col-select">
+        <col class="col-tracking">
+        <col class="col-name">
+        <col class="col-coverage">
+        <col class="col-doctor">
+        <col class="col-service">
+        <col class="col-date">
+        <col class="col-assigned">
+        <col class="col-status">
+        <col class="col-actions">
+      </colgroup>
       <thead>
       <tr>
-        <th><input type="checkbox" id="selectAll" title="Seleccionar todos"></th>
-        <th>ID</th>
-        <th>Nombre</th>
-        <th>Cobertura</th>
-        <th>Médico</th>
-        <th>Servicio</th>
-        <th>Fecha cirugía</th>
-        <th>Asignado a</th>
-        <th>Estado</th>
-        <th></th>
+        <th scope="col"><input type="checkbox" id="selectAll" title="Seleccionar todos" aria-label="Seleccionar todas las filas"></th>
+        <th scope="col">ID</th>
+        <th scope="col">Nombre</th>
+        <th scope="col">Cobertura</th>
+        <th scope="col">Médico</th>
+        <th scope="col">Servicio</th>
+        <th scope="col">Fecha cirugía</th>
+        <th scope="col">Asignado a</th>
+        <th scope="col">Estado</th>
+        <th scope="col"><span class="sr-only">Acciones</span></th>
       </tr>
       </thead>
 
@@ -222,33 +269,67 @@
                 <span class="text-muted">-</span>
               {% endif %}
             </td>
-            <td>
-              {% if p.assigned_to %}
-                <span class="badge badge-info">{{ p.assigned_to.get_full_name|default:p.assigned_to.username }}</span>
-              {% else %}
-                <span class="text-muted">-</span>
-              {% endif %}
+            <td class="patient-assigned-cell">
+              <div class="assignment-cell">
+                {% if p.assigned_to %}
+                  <span class="badge badge-info assignment-current">{{ p.assigned_to.get_full_name|default:p.assigned_to.username }}</span>
+                {% else %}
+                  <span class="text-muted assignment-current">-</span>
+                {% endif %}
+                <button
+                  type="button"
+                  class="btn-ghost btn-small quick-assign-user"
+                  data-patient-id="{{ p.pk }}"
+                  data-current-user-id="{% if p.assigned_to %}{{ p.assigned_to_id }}{% endif %}"
+                  aria-label="Asignar usuario a {{ p.full_name|escape }}"
+                >
+                  {% if p.assigned_to %}Cambiar{% else %}Asignar{% endif %}
+                </button>
+              </div>
             </td>
 
-            <td>
+            <td class="patient-status-cell">
               {% if p.status == 'AUTORIZADO' %}
                 <span class="badge badge-autorizado">{{ p.get_status_display }}</span>
-              {% elif p.status == 'PENDIENTE' %}
+              {% elif p.status == 'PENDIENTE_ENVIO_PRESTADOR' %}
                 <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
-              {% elif p.status == 'SOLICITADO' %}
+              {% elif p.status == 'PENDIENTE_PRESTADOR' %}
                 <span class="badge badge-solicitado">{{ p.get_status_display }}</span>
-              {% elif p.status == 'MATERIAL_PENDIENTE' %}
+              {% elif p.status == 'PENDIENTE_MEDICO' or p.status == 'PENDIENTE_PACIENTE' %}
+                <span class="badge badge-pendiente">{{ p.get_status_display }}</span>
+              {% elif p.status == 'AUTORIZADO_MATERIAL_PEND' %}
                 <span class="badge badge-material">{{ p.get_status_display }}</span>
-              {% elif p.status == 'PRESUPUESTO_SI' %}
+              {% elif p.status == 'PEND_COMERCIAL_PRESUPUESTO' %}
                 <span class="badge badge-presupuesto">{{ p.get_status_display }}</span>
-              {% elif p.status == 'RECHAZO' %}
+              {% elif p.status == 'RECHAZO_COBERTURA' %}
                 <span class="badge badge-rechazado">{{ p.get_status_display }}</span>
               {% elif p.status == 'REPROGRAMADO' %}
                 <span class="badge badge-reprogramado">{{ p.get_status_display }}</span>
               {% elif p.status == 'REALIZADO' %}
                 <span class="badge badge-success">{{ p.get_status_display }}</span>
+              {% elif p.status == 'SUSPENDIDA' %}
+                <span class="badge badge-suspendida">{{ p.get_status_display }}</span>
+              {% elif p.status == 'CANCELA_MEDICO' or p.status == 'CANCELA_PTE' %}
+                <span class="badge badge-suspendida">{{ p.get_status_display }}</span>
               {% else %}
                 <span class="badge">{{ p.get_status_display }}</span>
+              {% endif %}
+
+              {% if p.days_in_status is not None %}
+                <div class="solicitado-tiempos">
+                  {% if p.days_in_status >= 6 %}
+                    <span><span class="dias-chip dias-chip-critico">{{ p.days_in_status }}d ⚠</span> en este estado</span>
+                  {% elif p.days_in_status >= 4 %}
+                    <span><span class="dias-chip dias-chip-urgente">{{ p.days_in_status }}d</span> en este estado</span>
+                  {% elif p.days_in_status >= 2 %}
+                    <span><span class="dias-chip dias-chip-atencion">{{ p.days_in_status }}d</span> en este estado</span>
+                  {% elif p.days_in_status >= 0 %}
+                    <span><span class="dias-chip dias-chip-normal">{{ p.days_in_status }}d</span> en este estado</span>
+                  {% endif %}
+                  {% if p.status == 'PENDIENTE_PRESTADOR' and p.days_until_surgery is not None %}
+                    <span>🏥 Faltan: <strong>{% if p.days_until_surgery < 0 %}vencida{% elif p.days_until_surgery == 0 %}hoy{% else %}{{ p.days_until_surgery }}d{% endif %}</strong></span>
+                  {% endif %}
+                </div>
               {% endif %}
             </td>
 
@@ -304,9 +385,9 @@
 </section>
 
 <!-- MODALES PARA ACCIONES EN LOTE -->
-<div id="statusModal" class="modal-overlay" style="display:none;">
+<div id="statusModal" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
   <div class="modal-content modal-narrow">
-    <h3>Cambiar estado</h3>
+    <h3 id="statusModalTitle">Cambiar estado</h3>
     <p>Selecciona el nuevo estado para los <span id="statusModalCount">0</span> pacientes:</p>
     <select id="statusModalSelect" class="form-control">
       {% for value, label in status_choices %}
@@ -322,9 +403,9 @@
   </div>
 </div>
 
-<div id="userModal" class="modal-overlay" style="display:none;">
+<div id="userModal" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
   <div class="modal-content modal-narrow">
-    <h3>Asignar usuario</h3>
+    <h3 id="userModalTitle">Asignar usuario</h3>
     <p>Selecciona el usuario para los <span id="userModalCount">0</span> pacientes:</p>
     <select id="userModalSelect" class="form-control">
       <option value="">Sin asignar</option>
@@ -339,11 +420,11 @@
   </div>
 </div>
 
-<div id="patientViewModal" class="modal-overlay" style="display:none;">
+<div id="patientViewModal" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="pvName">
   <div class="modal-content patient-view-modal">
     <div class="patient-view-head">
       <h3 id="pvName">Detalle del paciente</h3>
-      <button type="button" class="btn-ghost patient-view-close" id="pvCloseBtn">×</button>
+      <button type="button" class="btn-ghost patient-view-close" id="pvCloseBtn" aria-label="Cerrar detalle del paciente">×</button>
     </div>
 
     <div class="patient-view-body">
@@ -469,6 +550,7 @@
   const cancelSelectionBtn = document.getElementById('cancelSelection');
   const patientViewModal = document.getElementById('patientViewModal');
   const patientViewButtons = document.querySelectorAll('.open-patient-view');
+  const quickAssignButtons = document.querySelectorAll('.quick-assign-user');
 
   function updateSelectedCount() {
     const checkedCount = document.querySelectorAll('.patient-checkbox:checked').length;
@@ -543,6 +625,13 @@
       alert('Error: El estado no puede estar vacío');
       return;
     }
+
+    const loading = window.CemicLoading;
+    if (loading) loading.show('Actualizando estado de ' + ids.length + ' solicitud(es)…', 0);
+    if (applyBulkActionBtn) {
+      applyBulkActionBtn.disabled = true;
+      applyBulkActionBtn.classList.add('is-loading');
+    }
     
     fetch('{% url "core:bulk_change_status" %}', {
       method: 'POST',
@@ -555,18 +644,34 @@
     .then(response => response.json())
     .then(data => {
       if (data.success) {
+        if (loading) loading.setMessage('Estado actualizado. Recargando listado…');
         window.location.reload();
       } else {
+        if (loading) loading.hide();
         alert('Error: ' + (data.error || 'Ocurrió un error'));
       }
     })
     .catch(error => {
       console.error('Error:', error);
+      if (loading) loading.hide();
       alert('Error al actualizar el estado');
+    })
+    .finally(() => {
+      if (applyBulkActionBtn) {
+        applyBulkActionBtn.disabled = false;
+        applyBulkActionBtn.classList.remove('is-loading');
+      }
     });
   }
 
   function bulkAssignUser(ids, userId) {
+    const loading = window.CemicLoading;
+    if (loading) loading.show('Asignando responsable a ' + ids.length + ' solicitud(es)…', 0);
+    if (applyBulkActionBtn) {
+      applyBulkActionBtn.disabled = true;
+      applyBulkActionBtn.classList.add('is-loading');
+    }
+
     fetch('{% url "core:bulk_assign_user" %}', {
       method: 'POST',
       headers: {
@@ -578,18 +683,31 @@
     .then(response => response.json())
     .then(data => {
       if (data.success) {
+        if (loading) loading.setMessage('Responsable actualizado. Recargando listado…');
         window.location.reload();
       } else {
+        if (loading) loading.hide();
         alert('Error: ' + (data.error || 'Ocurrió un error'));
       }
     })
     .catch(error => {
       console.error('Error:', error);
+      if (loading) loading.hide();
       alert('Error al asignar usuario');
+    })
+    .finally(() => {
+      if (applyBulkActionBtn) {
+        applyBulkActionBtn.disabled = false;
+        applyBulkActionBtn.classList.remove('is-loading');
+      }
     });
   }
 
   function exportSelected(ids) {
+    if (window.CemicLoading) {
+      window.CemicLoading.show('Preparando descarga…', 0);
+      window.setTimeout(function() { window.CemicLoading.hide(); }, 3500);
+    }
     const queryString = ids.map(id => `ids=${id}`).join('&');
     window.location.href = '{% url "core:export_selected" %}?' + queryString;
   }
@@ -637,9 +755,10 @@
   }
 
   // Funciones para modal de usuario
-  function openUserModal(ids) {
+  function openUserModal(ids, currentUserId = '') {
     pendingActionIds = ids;
     document.getElementById('userModalCount').textContent = ids.length;
+    document.getElementById('userModalSelect').value = currentUserId || '';
     document.getElementById('userModal').style.display = 'flex';
   }
 
@@ -674,6 +793,12 @@
 
   document.getElementById('userCancelBtn').addEventListener('click', closeUserModal);
   document.getElementById('userConfirmBtn').addEventListener('click', confirmUserAssign);
+
+  quickAssignButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      openUserModal([this.dataset.patientId], this.dataset.currentUserId || '');
+    });
+  });
 
   function statusClassFromText(statusText) {
     const normalized = (statusText || '').toLowerCase();

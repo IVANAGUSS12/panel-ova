@@ -4,23 +4,120 @@
   <head>
     <meta charset="UTF-8">
     <title>{% block title %}Panel OVA{% endblock %}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Panel OVA — Sistema de gestión de pacientes quirúrgicos">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
+    <style>
+      :root {
+        --color-primary: #007a78;
+        --color-primary-dark: #005f5d;
+        --color-primary-light: #ddf5f3;
+        --color-text: #1f2933;
+        --color-text-secondary: #52616b;
+        --color-bg: #f5f8fa;
+        --color-surface: #fff;
+        --color-border: #d8e2e7;
+        --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
+        --shadow-md: 0 10px 28px rgba(15, 23, 42, .08);
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--color-bg);
+        color: var(--color-text);
+        font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      }
+      a { color: var(--color-primary); text-decoration: none; }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        background: rgba(255, 255, 255, .96);
+        border-bottom: 1px solid var(--color-border);
+        box-shadow: var(--shadow-sm);
+      }
+      .topbar-inner {
+        width: min(100%, 1600px);
+        margin: 0 auto;
+        padding: .75rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .topbar-left, .topbar-right, .topbar-nav { display: flex; align-items: center; }
+      .topbar-left { gap: .75rem; min-width: 0; }
+      .topbar-nav { gap: .35rem; margin: 0 auto; }
+      .topbar-nav a, .mobile-nav a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 40px;
+        padding: .5rem .75rem;
+        border-radius: 8px;
+        font-weight: 600;
+      }
+      .logo-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: var(--color-primary);
+        color: #fff;
+        font-weight: 800;
+      }
+      .logo-text { display: flex; flex-direction: column; min-width: 0; }
+      .logo-title { font-weight: 800; }
+      .logo-subtitle { color: var(--color-text-secondary); font-size: .78rem; }
+      .main { padding: 1.5rem 0 3rem; }
+      .main-container { width: min(100%, 1600px); margin: 0 auto; padding: 0 1rem; }
+      .card {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+        padding: 1rem;
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 1rem;
+      }
+      .btn-primary, .btn-secondary, .btn-ghost, button, input, select, textarea {
+        font: inherit;
+      }
+      .form-control, input[type="text"], input[type="date"], input[type="time"], input[type="email"], input[type="tel"], select, textarea {
+        max-width: 100%;
+        min-height: 42px;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      img, video, canvas, iframe { max-width: 100%; }
+      @media (max-width: 768px) {
+        .topbar-nav { display: none; }
+        .topbar-inner { padding: .65rem .85rem; }
+        .main { padding-top: .85rem; }
+        .main-container { padding: 0 .75rem; }
+        .card { padding: .9rem; border-radius: 10px; }
+      }
+    </style>
+
     <!-- CSS propio -->
-    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v=20260306v1">
+    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}?v=20260623cemic1">
+    <link rel="stylesheet" href="{% static 'core/css/app-refresh.css' %}?v=20260623cemic1">
 
     <!-- Fuente -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     >
     {% block extra_head %}{% endblock %}
   </head>
 
-  <body>
+  <body class="{% if user.is_authenticated %}is-authenticated{% else %}is-public{% endif %}">
+
+    <a href="#main-content" id="skip-to-content" class="skip-link">Saltar al contenido principal</a>
 
     <header class="topbar">
       <div class="topbar-inner">
@@ -28,35 +125,46 @@
         {% if user.is_authenticated %}
         <!-- PANEL COMPLETO (solo para admin/staff) -->
         <div class="topbar-left">
-          <span class="logo-chip">OVA</span>
+          <span class="logo-chip" aria-hidden="true">C</span>
           <div class="logo-text">
-            <span class="logo-title">Panel OVA</span>
-            <span class="logo-subtitle">Gestión quirófano</span>
+            <span class="logo-title">CEMIC</span>
+            <span class="logo-subtitle">Administración Quirúrgica</span>
           </div>
         </div>
 
-        <nav class="topbar-nav">
-            <a href="/">Dashboard</a>
-            <a href="/servicio/">Servicio</a>
-            <a href="/calendario/">Agenda</a>
-            <a href="/estadisticas/">Estadísticas</a>
+        <nav class="topbar-nav" aria-label="Navegación principal">
+            <a href="{% url 'core:dashboard' %}" {% if request.path == '/' %}aria-current="page"{% endif %}>Inicio</a>
+            <a href="{% url 'core:patient_list' %}" {% if '/servicio/' in request.path %}aria-current="page"{% endif %}>Solicitudes</a>
+            <a href="{% url 'core:admission_patient_create' %}" {% if '/admision/carga/' in request.path %}aria-current="page"{% endif %}>Carga admision</a>
+            <a href="{% url 'core:calendar' %}?agenda=saavedra" {% if '/calendario/' in request.path or '/quirofano/' in request.path %}aria-current="page"{% endif %}>Agendas quirúrgicas</a>
+            <a href="{% url 'core:stats_view' %}" {% if '/estadisticas/' in request.path %}aria-current="page"{% endif %}>Reportes</a>
             {% if user.is_superuser %}
-          <a href="{% url 'core:user_management' %}" class="nav-admin-link">👤 Usuarios</a>
+            <a href="{% url 'core:user_management' %}" class="nav-admin-link" {% if '/usuarios/' in request.path %}aria-current="page"{% endif %}>Usuarios</a>
             {% endif %}
         </nav>
 
+        <!-- Menú hamburguesa para mobile -->
+        <button class="topbar-menu-toggle" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="mobileNav" type="button">
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+        </button>
+
         <div class="topbar-right">
+            <span class="user-context">Sesión activa</span>
             <span class="user-label">{{ user.username }}</span>
-            <span class="topbar-divider">·</span>
-            <a href="/accounts/logout/">Salir</a>
+            <form method="post" action="{% url 'accounts:logout' %}" class="logout-form">
+              {% csrf_token %}
+              <button type="submit" class="logout-button">Salir</button>
+            </form>
         </div>
         {% else %}
         <!-- MODO PACIENTE (sin login, sin menú, sin nada del panel) -->
         <div class="topbar-left is-centered">
-          <span class="logo-chip">OVA</span>
+          <span class="logo-chip" aria-hidden="true">C</span>
           <div class="logo-text">
-            <span class="logo-title">Panel OVA</span>
-            <span class="logo-subtitle">Carga de Pacientes</span>
+            <span class="logo-title">CEMIC</span>
+            <span class="logo-subtitle">Administración Quirúrgica</span>
           </div>
         </div>
 
@@ -66,12 +174,32 @@
       </div>
     </header>
 
-    <main class="main">
+    <!-- Menú mobile desplegable -->
+    {% if user.is_authenticated %}
+    <div id="mobileNav" class="mobile-nav" aria-hidden="true">
+      <nav aria-label="Menú móvil">
+        <a href="{% url 'core:dashboard' %}" {% if request.path == '/' %}aria-current="page"{% endif %}>Inicio</a>
+        <a href="{% url 'core:patient_list' %}" {% if '/servicio/' in request.path %}aria-current="page"{% endif %}>Solicitudes</a>
+        <a href="{% url 'core:admission_patient_create' %}" {% if '/admision/carga/' in request.path %}aria-current="page"{% endif %}>Carga admision</a>
+        <a href="{% url 'core:calendar' %}?agenda=saavedra" {% if '/calendario/' in request.path or '/quirofano/' in request.path %}aria-current="page"{% endif %}>Agendas quirúrgicas</a>
+        <a href="{% url 'core:stats_view' %}" {% if '/estadisticas/' in request.path %}aria-current="page"{% endif %}>Reportes</a>
+        {% if user.is_superuser %}
+          <a href="{% url 'core:user_management' %}">Usuarios</a>
+        {% endif %}
+        <form method="post" action="{% url 'accounts:logout' %}" class="mobile-nav-logout-form">
+          {% csrf_token %}
+          <button type="submit" class="mobile-nav-logout">Cerrar sesión ({{ user.username }})</button>
+        </form>
+      </nav>
+    </div>
+    {% endif %}
+
+    <main class="main" id="main-content">
       <div class="main-container">
         {% if messages %}
-          <div style="display: grid; gap: 0.75rem; margin-bottom: 1rem;">
+          <div role="status" aria-live="polite" class="messages-container">
             {% for message in messages %}
-              <div style="padding: 0.9rem 1rem; border-radius: 12px; border: 1px solid {% if 'error' in message.tags %}#fecaca{% elif 'warning' in message.tags %}#fde68a{% else %}#bfdbfe{% endif %}; background: {% if 'error' in message.tags %}#fef2f2{% elif 'warning' in message.tags %}#fffbeb{% else %}#eff6ff{% endif %}; color: {% if 'error' in message.tags %}#991b1b{% elif 'warning' in message.tags %}#92400e{% else %}#1d4ed8{% endif %}; font-size: 0.95rem;">
+              <div class="alert-message {% if 'error' in message.tags %}alert-message-error{% elif 'warning' in message.tags %}alert-message-warning{% else %}alert-message-info{% endif %}" role="alert">
                 {{ message }}
               </div>
             {% endfor %}
@@ -82,5 +210,6 @@
     </main>
 
     {% block extra_scripts %}{% endblock %}
+    <script src="{% static 'core/js/base.js' %}?v=20260623loading1"></script>
   </body>
 </html>

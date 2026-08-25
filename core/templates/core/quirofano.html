@@ -199,6 +199,76 @@
     max-width: 220px;
   }
 
+  .quiro-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .85rem;
+    padding: .9rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 14px;
+    background: rgba(14, 165, 233, .07);
+    border: 1px solid rgba(14, 165, 233, .16);
+    flex-wrap: wrap;
+  }
+
+  .quiro-bulk-tools {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+
+  .quiro-bulk-timings {
+    display: flex;
+    align-items: flex-end;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+
+  .quiro-bulk-timings .form-group {
+    margin: 0;
+    min-width: 130px;
+  }
+
+  .quiro-select-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-weight: 600;
+  }
+
+  .quiro-entry-selection {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .32rem .6rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, .05);
+    font-size: .82rem;
+    font-weight: 700;
+  }
+
+  .quiro-panel-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .28rem .6rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+
+  .quiro-panel-flag.is-present {
+    background: rgba(16, 185, 129, .14);
+    color: #047857;
+  }
+
+  .quiro-panel-flag.is-absent {
+    background: rgba(148, 163, 184, .16);
+    color: #475569;
+  }
+
   .quiro-empty {
     padding: 1.25rem;
     border-radius: 14px;
@@ -243,8 +313,10 @@
 {% endif %}
 
 <div class="agenda-switch">
-  <a href="{% url 'core:calendar' %}">Calendario</a>
-  <a href="{% url 'core:quirofano_view' %}" class="is-active">Gestion calendario-quirofano</a>
+  <a href="{% url 'core:calendar' %}?agenda=saavedra">Agenda Saavedra</a>
+  <a href="{% url 'core:calendar' %}?agenda=las-heras">Agenda Las Heras</a>
+  <a href="{% url 'core:calendar' %}?agenda=pombo">Agenda Pombo</a>
+  <a href="{% url 'core:quirofano_management' %}" class="is-active">Gestion calendario-quirofano</a>
 </div>
 
 <section class="quiro-layout">
@@ -275,7 +347,7 @@
       {% if snapshots %}
         <div class="quiro-history">
           {% for snapshot in snapshots %}
-            <a href="{% url 'core:quirofano_view' %}?snapshot={{ snapshot.id }}" class="quiro-history-item {% if active_snapshot and snapshot.id == active_snapshot.id %}is-active{% endif %}">
+            <a href="{% url 'core:quirofano_management' %}?snapshot={{ snapshot.id }}" class="quiro-history-item {% if active_snapshot and snapshot.id == active_snapshot.id %}is-active{% endif %}">
               <strong>{{ snapshot.imported_at|date:"d/m/Y H:i" }}</strong>
               <small>{{ snapshot.total_entries }} activas · {{ snapshot.new_count }} nuevas · {{ snapshot.changed_count }} cambiadas · {{ snapshot.removed_count }} quitadas</small>
             </a>
@@ -364,7 +436,7 @@
 
           <div class="form-group" style="display:flex;align-items:flex-end;gap:.5rem;">
             <button type="submit" class="btn-primary">Filtrar</button>
-            <a href="{% url 'core:quirofano_view' %}?snapshot={{ active_snapshot.id }}" class="btn-ghost">Limpiar</a>
+            <a href="{% url 'core:quirofano_management' %}?snapshot={{ active_snapshot.id }}" class="btn-ghost">Limpiar</a>
           </div>
         </form>
 
@@ -380,6 +452,42 @@
                 {% if item.sede %}<span class="text-muted"> · {{ item.sede }}</span>{% endif %}
               </div>
             {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if day_groups %}
+          <form method="post" action="{% url 'core:quirofano_whatsapp_autosend' %}" id="quiroAutoSendForm">
+            {% csrf_token %}
+            <input type="hidden" name="entry_ids" id="quiroAutoSendEntryIds">
+            <input type="hidden" name="load_timeout_ms" value="{{ default_whatsapp_timings.load_timeout_ms }}">
+            <input type="hidden" name="post_send_delay_ms" id="quiroAutoPostSendDelay" value="{{ default_whatsapp_timings.post_send_delay_ms }}">
+            <input type="hidden" name="between_send_delay_ms" value="{{ default_whatsapp_timings.between_send_delay_ms }}">
+            <input type="hidden" name="next" value="{{ quirofano_next_url }}">
+          </form>
+          <div class="quiro-bulk-bar">
+            <div>
+              <strong>Acción masiva WhatsApp</strong>
+              <div class="text-muted">Modo manual abre chats. Modo automático usa WhatsApp Web con espera de carga y click en enviar por cada seleccionado.</div>
+            </div>
+            <div class="quiro-bulk-tools">
+              <label class="quiro-select-toggle" for="quiroSelectAll">
+                <input type="checkbox" id="quiroSelectAll">
+                Seleccionar visibles
+              </label>
+              <span id="quiroSelectionCount" class="text-muted">0 seleccionados</span>
+              <div class="quiro-bulk-timings">
+                <div class="form-group">
+                  <label for="quiroLoadTimeoutMs">Espera carga (ms)</label>
+                  <input type="number" id="quiroLoadTimeoutMs" class="form-control" min="3000" step="1000" value="{{ default_whatsapp_timings.load_timeout_ms }}">
+                </div>
+                <div class="form-group">
+                  <label for="quiroBetweenSendDelayMs">Espera entre envíos (ms)</label>
+                  <input type="number" id="quiroBetweenSendDelayMs" class="form-control" min="1000" step="500" value="{{ default_whatsapp_timings.between_send_delay_ms }}">
+                </div>
+              </div>
+              <button type="button" id="quiroBulkWhatsappBtn" class="btn-ghost">Abrir chats</button>
+              <button type="button" id="quiroBulkWhatsappAutoBtn" class="btn-primary">Enviar automático</button>
+            </div>
           </div>
         {% endif %}
 
@@ -403,6 +511,19 @@
                           <div class="text-muted">{{ entry.dni|default:'Sin DNI' }} · {{ entry.sede }}</div>
                         </div>
                         <div style="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                          <label class="quiro-entry-selection" for="quiro_select_{{ entry.id }}">
+                            <input
+                              type="checkbox"
+                              id="quiro_select_{{ entry.id }}"
+                              class="quiro-entry-checkbox"
+                              data-patient-name="{{ entry.patient_name|escape }}"
+                              data-phone="{{ entry.whatsapp_phone|default:''|escape }}"
+                              data-surgery-date="{{ entry.surgery_date|date:'d/m/Y'|escape }}"
+                              data-doctor="{{ entry.doctor|default:''|escape }}"
+                            >
+                            Seleccionar
+                          </label>
+                          <span class="quiro-panel-flag {% if entry.is_in_panel %}is-present{% else %}is-absent{% endif %}">{% if entry.is_in_panel %}En panel{% else %}No en panel{% endif %}</span>
                           <span class="quiro-badge {{ entry.resolved_comparison_status }}">{{ entry.get_resolved_comparison_status_display }}</span>
                           <span class="quiro-badge {{ entry.change_type }}">{{ entry.get_change_type_display }}</span>
                         </div>
@@ -413,13 +534,16 @@
                         <div><strong>Obra social</strong><br>{{ entry.coverage|default:'-' }}</div>
                         <div><strong>Medico</strong><br>{{ entry.doctor|default:'-' }}</div>
                         <div><strong>Especialidad</strong><br>{{ entry.canonical_service|default:entry.specialty_raw }}</div>
+                        <div><strong>Servicio destino</strong><br>{{ entry.destination_service|default:'-' }}</div>
                         <div><strong>Origen</strong><br>{{ entry.origin }}</div>
+                        <div><strong>Teléfono</strong><br>{% if entry.whatsapp_phone %}{{ entry.whatsapp_phone }}{% if entry.whatsapp_source %} <span class="text-muted">· {{ entry.whatsapp_source }}</span>{% endif %}{% else %}-{% endif %}</div>
+                        <div><strong>Servicio panel</strong><br>{{ entry.panel_service|default:'-' }}</div>
                         <div><strong>Panel OVA</strong><br>{% if entry.app_patient %}<a href="{% url 'core:patient_detail' entry.app_patient.id %}">Ver paciente</a>{% else %}Sin match{% endif %}</div>
                       </div>
 
                       <form method="post" action="{% url 'core:quirofano_entry_status_update' entry.id %}" class="quiro-status-form">
                         {% csrf_token %}
-                        <input type="hidden" name="next" value="{% url 'core:quirofano_view' %}?{{ pagination_qs }}">
+                        <input type="hidden" name="next" value="{% url 'core:quirofano_management' %}?{{ pagination_qs }}">
                         <label for="entry_status_{{ entry.id }}"><strong>Estado manual</strong></label>
                         <select id="entry_status_{{ entry.id }}" name="manual_comparison_status" class="form-control">
                           <option value="" {% if not entry.manual_comparison_status %}selected{% endif %}>Automatico</option>
@@ -483,4 +607,225 @@
     </section>
   </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ block.super }}
+  {% if active_snapshot %}
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        var selectAll = document.getElementById('quiroSelectAll');
+        var countNode = document.getElementById('quiroSelectionCount');
+        var bulkButton = document.getElementById('quiroBulkWhatsappBtn');
+        var autoSendButton = document.getElementById('quiroBulkWhatsappAutoBtn');
+        var autoSendForm = document.getElementById('quiroAutoSendForm');
+        var autoSendEntryIds = document.getElementById('quiroAutoSendEntryIds');
+        var autoLoadTimeout = document.getElementById('quiroLoadTimeoutMs');
+        var autoBetweenDelay = document.getElementById('quiroBetweenSendDelayMs');
+        var entryCheckboxes = Array.prototype.slice.call(document.querySelectorAll('.quiro-entry-checkbox'));
+        function construirMensajeWhatsApp(checkbox) {
+          var patientName = checkbox.dataset.patientName || 'paciente';
+          var surgeryDate = checkbox.dataset.surgeryDate || 'fecha a confirmar';
+          var doctor = checkbox.dataset.doctor || 'profesional a confirmar';
+
+          return 'Estimado/a paciente y/o familiar de ' + patientName + ', nos comunicamos desde el Área de Administración Quirúrgica de CEMIC.\n\n'
+            + 'Nos contactamos por la intervención que tiene programada para el día ' + surgeryDate + ' con el profesional ' + doctor + '.\n\n'
+            + 'Queríamos consultar sobre el estado de la autorización de dicha intervención.\n\n'
+            + 'Asimismo, aprovechamos para informarle que CEMIC cuenta con un área de autorizaciones, desde donde podemos gestionar la autorización de la intervención por usted.\n\n'
+            + 'Para iniciar la gestión, le solicitamos que cargue la documentación correspondiente en el siguiente enlace:\n\n'
+            + 'https://panel.oficinavirtualcemic.com/qr/carga/\n\n'
+            + 'Muchas gracias.\n'
+            + 'Área de Administración Quirúrgica\n'
+            + 'CEMIC';
+        }
+
+        function getSelectedCheckboxes() {
+          return entryCheckboxes.filter(function(checkbox) { return checkbox.checked; });
+        }
+
+        function normalizarTelefonoWhatsApp(rawPhone) {
+          var digits = (rawPhone || '').replace(/[^0-9]/g, '');
+
+          if (!digits) {
+            return '';
+          }
+
+          if (digits.startsWith('00')) {
+            digits = digits.slice(2);
+          }
+
+          if (digits.startsWith('549')) {
+            return digits;
+          }
+
+          if (digits.startsWith('54')) {
+            var national = digits.slice(2);
+
+            if (national.startsWith('9')) {
+              return digits;
+            }
+
+            if (national.startsWith('0')) {
+              national = national.slice(1);
+            }
+
+            national = national.replace(/^(\d{2,4})15/, '$1');
+
+            if (national.length >= 10 && national.length <= 11) {
+              return '549' + national;
+            }
+
+            return '54' + national;
+          }
+
+          if (digits.startsWith('0')) {
+            digits = digits.slice(1);
+          }
+
+          digits = digits.replace(/^(\d{2,4})15/, '$1');
+
+          if (digits.length >= 10 && digits.length <= 11) {
+            return '549' + digits;
+          }
+
+          return digits;
+        }
+
+        function updateSelectionState() {
+          var checked = getSelectedCheckboxes();
+          if (countNode) {
+            countNode.textContent = checked.length + ' seleccionados';
+          }
+          if (!selectAll) {
+            return;
+          }
+          if (!entryCheckboxes.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+          }
+          selectAll.checked = checked.length === entryCheckboxes.length;
+          selectAll.indeterminate = checked.length > 0 && checked.length < entryCheckboxes.length;
+        }
+
+        if (selectAll) {
+          selectAll.addEventListener('change', function() {
+            entryCheckboxes.forEach(function(checkbox) {
+              checkbox.checked = selectAll.checked;
+            });
+            updateSelectionState();
+          });
+        }
+
+        entryCheckboxes.forEach(function(checkbox) {
+          checkbox.addEventListener('change', updateSelectionState);
+        });
+
+        if (bulkButton) {
+          bulkButton.addEventListener('click', function() {
+            var selected = getSelectedCheckboxes();
+            if (!selected.length) {
+              alert('Seleccioná al menos un paciente visible.');
+              return;
+            }
+
+            var openedCount = 0;
+            var skipped = [];
+
+            selected.forEach(function(checkbox) {
+              var patientName = checkbox.dataset.patientName || 'Paciente sin nombre';
+              var normalizedPhone = normalizarTelefonoWhatsApp(checkbox.dataset.phone || '');
+              if (!normalizedPhone || normalizedPhone.length < 12) {
+                skipped.push(patientName);
+                return;
+              }
+
+              var message = construirMensajeWhatsApp(checkbox);
+              var whatsappUrl = 'https://web.whatsapp.com/send/?phone=' + normalizedPhone + '&text=' + encodeURIComponent(message) + '&type=phone_number&app_absent=1';
+              var link = document.createElement('a');
+              link.href = whatsappUrl;
+              link.target = '_blank';
+              link.rel = 'noopener noreferrer';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              openedCount += 1;
+            });
+
+            if (!openedCount) {
+              alert('Ninguno de los seleccionados tiene un teléfono válido para WhatsApp.');
+              return;
+            }
+
+            if (skipped.length) {
+              alert('Se intentó abrir WhatsApp para ' + openedCount + ' paciente(s). Quedaron omitidos ' + skipped.length + ': ' + skipped.join(', '));
+              return;
+            }
+
+            alert('Se intentó abrir WhatsApp para ' + openedCount + ' paciente(s).');
+          });
+        }
+
+        if (autoSendButton && autoSendForm && autoSendEntryIds) {
+          autoSendButton.addEventListener('click', function() {
+            var selected = getSelectedCheckboxes();
+            if (!selected.length) {
+              alert('Seleccioná al menos un paciente visible.');
+              return;
+            }
+
+            var invalidPhones = [];
+            var selectedIds = [];
+
+            selected.forEach(function(checkbox) {
+              var normalizedPhone = normalizarTelefonoWhatsApp(checkbox.dataset.phone || '');
+              if (!normalizedPhone || normalizedPhone.length < 12) {
+                invalidPhones.push(checkbox.dataset.patientName || 'Paciente sin nombre');
+                return;
+              }
+              selectedIds.push(checkbox.id.replace('quiro_select_', ''));
+            });
+
+            if (!selectedIds.length) {
+              alert('Ninguno de los seleccionados tiene un teléfono válido para el envío automático.');
+              return;
+            }
+
+            var loadTimeout = parseInt((autoLoadTimeout && autoLoadTimeout.value) || '0', 10);
+            var betweenDelay = parseInt((autoBetweenDelay && autoBetweenDelay.value) || '0', 10);
+            if (!loadTimeout || loadTimeout < 3000) {
+              alert('La espera de carga debe ser al menos de 3000 ms.');
+              return;
+            }
+            if (!betweenDelay || betweenDelay < 1000) {
+              alert('La espera entre envíos debe ser al menos de 1000 ms.');
+              return;
+            }
+
+            var confirmationMessage = 'Se iniciará el envío automático para ' + selectedIds.length + ' paciente(s). '
+              + 'WhatsApp Web debe tener sesión iniciada en la ventana controlada. ¿Continuar?';
+            if (invalidPhones.length) {
+              confirmationMessage += '\n\nSe omitirán ' + invalidPhones.length + ' sin teléfono válido.';
+            }
+
+            if (!window.confirm(confirmationMessage)) {
+              return;
+            }
+
+            autoSendEntryIds.value = selectedIds.join(',');
+            autoSendForm.querySelector('input[name="load_timeout_ms"]').value = String(loadTimeout);
+            autoSendForm.querySelector('input[name="between_send_delay_ms"]').value = String(betweenDelay);
+            if (window.CemicLoading) {
+              window.CemicLoading.show('Iniciando envío automático por WhatsApp…', 0);
+            }
+            autoSendButton.disabled = true;
+            autoSendButton.classList.add('is-loading');
+            autoSendForm.submit();
+          });
+        }
+
+        updateSelectionState();
+      });
+    </script>
+  {% endif %}
 {% endblock %}

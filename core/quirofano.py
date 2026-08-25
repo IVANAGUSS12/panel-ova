@@ -30,7 +30,7 @@ SPECIALTY_ALIASES = {
     'TRAUMATOLOGIA': ['traumatologia', 'trauma', 'traumato', 'ortopedia', 'traumatolog'],
     'HEMODINAMIA': ['hemodinamia', 'hemodin'],
     'UROLOGIA': ['urologia', 'cirugia urologica', 'urologica', 'urolog'],
-    'CIRUGIA GENERAL': ['cirugia general', 'cir general', 'general'],
+    'CIRUGIA GENERAL': ['cirugia general', 'cir general', 'cirugia gral', 'cir gral'],
     'CIRUGIA CABEZA Y CUELLO': ['cirugia cabeza y cuello', 'cabeza y cuello', 'cabeza cuello'],
     'CIRUGIA TORACICA': ['cirugia toracica', 'toracica', 'cir toracica', 'torax'],
     'CIRUGIA PLASTICA': ['cirugia plastica', 'plastica', 'cir plastica', 'estetica'],
@@ -157,6 +157,25 @@ def _report_headers_and_data(rows: list[list[str]]) -> tuple[list[str], list[lis
     return header_row, data_rows
 
 
+def _build_header_index_map(headers: list[str]) -> dict[str, int]:
+    header_map: dict[str, int] = {}
+    for index, header in enumerate(headers):
+        normalized_header = normalize_text(header)
+        if normalized_header:
+            header_map[normalized_header] = index
+    return header_map
+
+
+def _row_value(row: list, header_map: dict[str, int], *header_names: str, fallback_index: int | None = None):
+    for header_name in header_names:
+        index = header_map.get(normalize_text(header_name))
+        if index is not None and index < len(row):
+            return row[index]
+    if fallback_index is not None and fallback_index < len(row):
+        return row[fallback_index]
+    return None
+
+
 def create_artifact_directory() -> Path:
     timestamp = timezone.localtime().strftime('%Y%m%d_%H%M%S')
     artifact_dir = Path(settings.MEDIA_ROOT) / REPORT_ARTIFACT_DIRNAME / timestamp
@@ -279,38 +298,44 @@ def _is_allowed_origin(raw_value: str | None) -> bool:
 
 def parse_report_workbook(report_path: Path, sede: str, date_from: date, date_to: date, allowed_services: set[str]) -> list[dict]:
     source_rows = _read_report_rows(report_path)
-    _, data_rows = _report_headers_and_data(source_rows)
+    headers, data_rows = _report_headers_and_data(source_rows)
+    header_map = _build_header_index_map(headers)
     rows: list[dict] = []
 
     for row_index, row in enumerate(data_rows, start=3):
-        surgery_date = _coerce_date(row[1] if len(row) > 1 else None)
+        surgery_date = _coerce_date(_row_value(row, header_map, 'Fecha de Cirugia', fallback_index=1))
         if not surgery_date or surgery_date < date_from or surgery_date > date_to:
             continue
 
-        specialty_raw = str(row[26] or '').strip() if len(row) > 26 else ''
+        specialty_raw = str(_row_value(row, header_map, 'Especialidad', fallback_index=26) or '').strip()
         canonical_service = canonicalize_service(specialty_raw)
         if not canonical_service or canonical_service not in allowed_services:
             continue
 
-        origin_raw = str(row[27] or '').strip() if len(row) > 27 else ''
+        origin_raw = str(_row_value(row, header_map, 'Origen', fallback_index=27) or '').strip()
         if not _is_allowed_origin(origin_raw):
             continue
 
-        patient_name = str(row[7] or '').strip() if len(row) > 7 else ''
-        dni = normalize_dni(row[10] if len(row) > 10 else '')
+        patient_name = str(_row_value(row, header_map, 'Paciente', fallback_index=7) or '').strip()
+        dni = normalize_dni(_row_value(row, header_map, 'Dni', fallback_index=10))
         if not patient_name and not dni:
             continue
+
+        report_phone = str(_row_value(row, header_map, 'Telefono', fallback_index=11) or '').strip()
+        destination_service = str(_row_value(row, header_map, 'Servicio de Destino', fallback_index=25) or '').strip()
 
         rows.append({
             'sede': sede,
             'surgery_date': surgery_date,
-            'surgery_time': _coerce_time(row[2] if len(row) > 2 else None),
+            'surgery_time': _coerce_time(_row_value(row, header_map, 'Hora Programada', fallback_index=2)),
             'patient_name': patient_name,
             'patient_name_norm': normalize_text(patient_name),
-            'coverage': str(row[9] or '').strip() if len(row) > 9 else '',
+            'coverage': str(_row_value(row, header_map, 'Obra Social', fallback_index=9) or '').strip(),
             'dni': dni,
-            'doctor': str(row[15] or '').strip() if len(row) > 15 else '',
-            'doctor_norm': normalize_text(row[15] if len(row) > 15 else ''),
+            'report_phone': report_phone,
+            'doctor': str(_row_value(row, header_map, 'Cirujano', fallback_index=15) or '').strip(),
+            'doctor_norm': normalize_text(_row_value(row, header_map, 'Cirujano', fallback_index=15)),
+            'destination_service': destination_service,
             'specialty_raw': specialty_raw,
             'canonical_service': canonical_service,
             'origin': origin_raw,
@@ -388,9 +413,15 @@ def _pick_previous_candidate(row: dict, candidates: list[dict]) -> dict | None:
 
 
 def _match_app_patient(row: dict, patients_by_dni: dict[str, Patient], patients_by_name: dict[str, list[Patient]]) -> Patient | None:
+    surgery_date: date | None = row.get('surgery_date')
     dni = row.get('dni') or ''
     if dni and dni in patients_by_dni:
-        return patients_by_dni[dni]
+        candidate = patients_by_dni[dni]
+        # Solo matchear si la fecha de la app está dentro de 20 días de la fecha de quirófano
+        if surgery_date and candidate.planned_date:
+            if abs((candidate.planned_date - surgery_date).days) > 20:
+                return None
+        return candidate
 
     name_norm = row.get('patient_name_norm') or ''
     if not name_norm:
@@ -401,7 +432,7 @@ def _match_app_patient(row: dict, patients_by_dni: dict[str, Patient], patients_
         return None
 
     for candidate in candidates:
-        if candidate.planned_date == row.get('surgery_date'):
+        if candidate.planned_date == surgery_date:
             return candidate
     return candidates[0]
 
@@ -525,8 +556,10 @@ def import_daily_quirofano_snapshot(*, user, username: str | None = None, passwo
             patient_name_norm=row['patient_name_norm'],
             coverage=row['coverage'],
             dni=row['dni'],
+            report_phone=row['report_phone'],
             doctor=row['doctor'],
             doctor_norm=row['doctor_norm'],
+            destination_service=row['destination_service'],
             specialty_raw=row['specialty_raw'],
             canonical_service=row['canonical_service'],
             origin=row['origin'],
@@ -558,8 +591,10 @@ def import_daily_quirofano_snapshot(*, user, username: str | None = None, passwo
                 patient_name_norm=previous_entry.patient_name_norm,
                 coverage=previous_entry.coverage,
                 dni=previous_entry.dni,
+                report_phone=previous_entry.report_phone,
                 doctor=previous_entry.doctor,
                 doctor_norm=previous_entry.doctor_norm,
+                destination_service=previous_entry.destination_service,
                 specialty_raw=previous_entry.specialty_raw,
                 canonical_service=previous_entry.canonical_service,
                 origin=previous_entry.origin,
@@ -598,8 +633,10 @@ def import_daily_quirofano_snapshot(*, user, username: str | None = None, passwo
             patient_name_norm=patient_name_norm,
             coverage=patient.coverage or '',
             dni=normalize_dni(patient.dni),
+            report_phone='',
             doctor=patient.doctor or '',
             doctor_norm=normalize_text(patient.doctor),
+            destination_service='',
             specialty_raw=patient.service or '',
             canonical_service=canonical_service,
             origin='APP',

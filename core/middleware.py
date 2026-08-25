@@ -2,6 +2,7 @@ from .models import AuditLog
 from django.utils.deprecation import MiddlewareMixin
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
+from django.conf import settings
 from . import signals
 import logging
 import os
@@ -10,7 +11,8 @@ from django.db import connection
 class AuditMiddleware(MiddlewareMixin):
     def process_view(self, request, view_func, view_args, view_kwargs):
         if (
-            request.path.startswith('/static/')
+            request.method == 'GET'
+            or request.path.startswith('/static/')
             or request.path.startswith('/media/')
             or request.path == '/favicon.ico'
         ):
@@ -47,6 +49,8 @@ class SlowQueryLoggingMiddleware(MiddlewareMixin):
     - Umbral configurable mediante la variable de entorno `SLOW_QUERY_THRESHOLD` (segundos).
     """
     def process_request(self, request):
+        if not settings.DEBUG:
+            return
         # Guardamos cuántas consultas había al inicio de la petición
         try:
             request._sql_start_index = len(connection.queries)
@@ -54,6 +58,8 @@ class SlowQueryLoggingMiddleware(MiddlewareMixin):
             request._sql_start_index = 0
 
     def process_response(self, request, response):
+        if not settings.DEBUG:
+            return response
         try:
             start = getattr(request, '_sql_start_index', 0)
             queries = connection.queries[start:]

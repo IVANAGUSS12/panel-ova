@@ -132,16 +132,24 @@ class Command(BaseCommand):
             s = str(raw).strip().lower()
             if s == "autorizado":
                 return Patient.STATUS_AUTORIZADO
-            if s in {"presupuesto si", "presupuesto sí"}:
-                return Patient.STATUS_PRESUPUESTO_SI
-            if s == "solicitado":
-                return Patient.STATUS_SOLICITADO
+            if s in {"presupuesto si", "presupuesto sí", "pendiente comercial - presupuesto"}:
+                return Patient.STATUS_PENDIENTE_COMERCIAL_PRESUPUESTO
+            if s in {"solicitado", "pendiente prestador"}:
+                return Patient.STATUS_PENDIENTE_PRESTADOR
+            if s == "pendiente medico":
+                return Patient.STATUS_PENDIENTE_MEDICO
+            if s == "pendiente paciente":
+                return Patient.STATUS_PENDIENTE_PACIENTE
             if s == "pendiente":
                 return Patient.STATUS_PENDIENTE
-            if s == "autorizado material pendiente":
-                return Patient.STATUS_MATERIAL_PENDIENTE
-            if "rechazado" in s:
-                return Patient.STATUS_RECHAZO
+            if s in {"autorizado material pendiente", "autorizado - material pendiente", "material pendiente"}:
+                return Patient.STATUS_AUTORIZADO_MATERIAL_PENDIENTE
+            if "rechazado" in s or s == "rechazo cobertura":
+                return Patient.STATUS_RECHAZO_COBERTURA
+            if s == "cancela medico":
+                return Patient.STATUS_CANCELA_MEDICO
+            if s in {"cancela pte", "cancela paciente"}:
+                return Patient.STATUS_CANCELA_PTE
             return Patient.STATUS_PENDIENTE
 
         for row in data_rows:
