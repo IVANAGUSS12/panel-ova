@@ -341,6 +341,7 @@ def _build_patient_tracking_email(request, patient: Patient) -> tuple[str, str, 
     patient_name = (patient.full_name or "paciente").title()
 
     tracking_home_url = _build_public_url(request, reverse('core:tracking'))
+    anesthesia_contact_email = getattr(settings, "ANESTHESIA_CONTACT_EMAIL", "").strip()
 
     subject = f"CEMIC - Solicitud recibida y seguimiento {patient.tracking_id}"
     lines = [
@@ -358,6 +359,12 @@ def _build_patient_tracking_email(request, patient: Patient) -> tuple[str, str, 
             "",
             "Dudas frecuentes sobre anestesia:",
             anesthesia_info_url,
+        ])
+    if anesthesia_contact_email:
+        lines.extend([
+            "",
+            "Para consultas con el equipo de anestesia puede escribir a:",
+            anesthesia_contact_email,
         ])
     if anesthesia_pdf_path:
         lines.extend([
@@ -393,7 +400,6 @@ def _send_patient_tracking_email(request, patient: Patient) -> bool:
         body=body,
         from_email=from_email,
         to=[recipient],
-        bcc=getattr(settings, "PATIENT_TRACKING_BCC_EMAILS", []),
     )
     if anesthesia_pdf_path and anesthesia_pdf_path.exists():
         email_message.attach_file(str(anesthesia_pdf_path))
