@@ -393,6 +393,7 @@ def _send_patient_tracking_email(request, patient: Patient) -> bool:
         body=body,
         from_email=from_email,
         to=[recipient],
+        bcc=getattr(settings, "PATIENT_TRACKING_BCC_EMAILS", []),
     )
     if anesthesia_pdf_path and anesthesia_pdf_path.exists():
         email_message.attach_file(str(anesthesia_pdf_path))

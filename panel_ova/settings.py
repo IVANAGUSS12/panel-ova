@@ -276,6 +276,14 @@ PATIENT_TRACKING_FROM_EMAIL = os.getenv(
     'PATIENT_TRACKING_FROM_EMAIL',
     DEFAULT_FROM_EMAIL or 'oficinavirtualdeautorizaciones@cemic.edu.ar',
 )
+PATIENT_TRACKING_BCC_EMAILS = [
+    email.strip()
+    for email in os.getenv(
+        'PATIENT_TRACKING_BCC_EMAILS',
+        'consultorioanestesia@cemic.edu.ar',
+    ).split(',')
+    if email.strip()
+]
 
 ADMISSION_EMAIL_BACKEND = os.getenv('ADMISSION_EMAIL_BACKEND', EMAIL_BACKEND)
 ADMISSION_EMAIL_HOST = os.getenv('ADMISSION_EMAIL_HOST', EMAIL_HOST)
