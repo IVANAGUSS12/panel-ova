@@ -3265,8 +3265,8 @@ def bulk_change_status(request):
         for patient in patients:
             old_status = patient.status
             patient.status = new_status
-            # Incluir solicitado_since para que el pre_save signal pueda actualizarlo
-            patient.save(update_fields=['status', 'updated_at', 'solicitado_since'])
+            # Incluir campos derivados para que el pre_save signal pueda persistirlos.
+            patient.save(update_fields=['status', 'updated_at', 'status_since', 'solicitado_since'])
             updated += 1
             if old_status != Patient.STATUS_AUTORIZADO and new_status == Patient.STATUS_AUTORIZADO:
                 if not patient.email:

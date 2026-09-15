@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 load_dotenv()
 
@@ -28,6 +29,14 @@ def get_bool_env(name, default=False):
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def get_path_env(name, default):
+    value = os.getenv(name, "")
+    if not value:
+        return default
+    path = Path(value)
+    return path if path.is_absolute() else BASE_DIR / path
+
 # ===========================
 # BASE DIR
 # ===========================
@@ -36,10 +45,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ===========================
 # CONFIG GENERAL
 # ===========================
-# ⚠️ ADVERTENCIA: Cambiar SECRET_KEY en producción usando variable de entorno
-SECRET_KEY = os.getenv('SECRET_KEY', 'insecure-key')
-
 DEBUG = get_bool_env('DEBUG', False)
+SECRET_KEY = os.getenv('SECRET_KEY', '').strip()
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'dev-insecure-key-only-for-local-debug'
+    else:
+        raise ImproperlyConfigured('SECRET_KEY es obligatoria cuando DEBUG=False.')
+
 AUTO_REFRESH_AGENDAS = get_bool_env('AUTO_REFRESH_AGENDAS', True)
 AUTO_REFRESH_AGENDAS_INTERVAL_MINUTES = get_int_env('AUTO_REFRESH_AGENDAS_INTERVAL_MINUTES', 20)
 
@@ -127,7 +140,12 @@ WSGI_APPLICATION = 'panel_ova.wsgi.application'
 _database_url = os.getenv('DATABASE_URL')
 _pg_db = os.getenv('POSTGRES_DB')
 if _database_url:
-    import dj_database_url
+    try:
+        import dj_database_url
+    except ImportError as exc:
+        raise ImproperlyConfigured(
+            'DATABASE_URL requiere instalar dj-database-url.'
+        ) from exc
     DATABASES = {'default': dj_database_url.parse(_database_url, conn_max_age=600)}
 elif _pg_db:
     DATABASES = {
@@ -171,8 +189,8 @@ USE_TZ = True
 # ===========================
 # STATIC & MEDIA
 # ===========================
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_URL = os.getenv('STATIC_URL', '/static/')
+STATIC_ROOT = get_path_env('STATIC_ROOT', BASE_DIR / 'staticfiles')
 STATICFILES_DIRS = []
 
 # Use WhiteNoise to serve compressed static files with cache-friendly names.
@@ -212,8 +230,8 @@ COMPRESS_OUTPUT_DIR = 'CACHE'
 COMPRESS_URL = STATIC_URL
 COMPRESS_ROOT = STATIC_ROOT
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = os.getenv('MEDIA_URL', '/media/')
+MEDIA_ROOT = get_path_env('MEDIA_ROOT', BASE_DIR / 'media')
 
 # ===========================
 # LOGIN
@@ -234,6 +252,10 @@ INTERNAL_IPS = [
 # CLOUDFLARE / HTTPS SETTINGS
 # ===========================
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = get_bool_env('SECURE_SSL_REDIRECT', False)
+SECURE_HSTS_SECONDS = get_int_env('SECURE_HSTS_SECONDS', 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = get_bool_env('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+SECURE_HSTS_PRELOAD = get_bool_env('SECURE_HSTS_PRELOAD', False)
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
@@ -246,7 +268,7 @@ LOGGING = {
         'slow_file': {
             'level': 'WARNING',
             'class': 'logging.FileHandler',
-            'filename': str(BASE_DIR / 'slow_queries.log'),
+            'filename': str(get_path_env('SLOW_QUERY_LOG_PATH', BASE_DIR / 'slow_queries.log')),
             'encoding': 'utf-8',
         },
     },

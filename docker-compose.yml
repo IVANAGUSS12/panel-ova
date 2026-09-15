@@ -1,12 +1,10 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: panel_ova
-      POSTGRES_USER: panel_ova_user
-      POSTGRES_PASSWORD: panel_ova_password
+      POSTGRES_DB: ${POSTGRES_DB:-panel_ova}
+      POSTGRES_USER: ${POSTGRES_USER:-panel_ova_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD debe definirse en .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -22,6 +20,9 @@ services:
       - "5000:5000"
     env_file:
       - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-panel_ova_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-panel_ova}}
+      AUTO_REFRESH_AGENDAS: "0"
     depends_on:
       - db
 
@@ -34,6 +35,7 @@ services:
     env_file:
       - .env
     environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-panel_ova_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-panel_ova}}
       AUTO_REFRESH_AGENDAS: "0"
     depends_on:
       - db

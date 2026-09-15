@@ -1,61 +1,114 @@
 # Panel CEMIC / Panel OVA
 
-Sistema interno Django para gestión administrativa quirúrgica: solicitudes de pacientes, autorizaciones, agendas de quirófano, reportes, documentación y mensajería operativa.
+Aplicacion Django para gestion administrativa quirurgica: carga de solicitudes de pacientes, seguimiento publico por codigo OVA, autorizaciones, agenda de quirofanos por sede, reportes Excel/PDF, historial de cambios, emails operativos y mensajes WhatsApp.
 
-## Estado del proyecto
+## Arquitectura
 
-La aplicación está en una etapa de ordenamiento progresivo. La regla principal es mejorar estructura y mantenibilidad sin romper flujos existentes ni bajar la app en uso.
+- `panel_ova/`: configuracion Django, URLs raiz, WSGI/ASGI.
+- `accounts/`: login/logout con autenticacion Django.
+- `core/`: dominio principal: pacientes, adjuntos, agenda, quirofano, reportes, emails, WhatsApp, auditoria y comandos operativos.
+- `core/static/` y `core/templates/`: frontend server-rendered con JavaScript propio.
+- `core/agenda_*_data/`: datos runtime de agendas portables en JSON. No debe versionarse; debe migrarse como dato persistente si se usa en produccion.
+- `media/`: adjuntos, PDFs y archivos generados/subidos. No debe versionarse; debe respaldarse.
+- `staticfiles/`: salida de `collectstatic`. Se regenera.
 
-## Estructura actual resumida
+La app usa Django templates, sesiones Django, ORM Django y por defecto SQLite si no se configura base externa. Para servidor nuevo se recomienda PostgreSQL.
 
-```text
-accounts/        autenticación, login/logout y usuarios
-core/            pacientes, autorizaciones, dashboard, reportes, quirófano y lógica operativa
-panel_ova/       configuración Django
-media/           archivos subidos/generados por la app
-staticfiles/     salida de collectstatic, no editar manualmente
-docs/            documentación técnica y decisiones de arquitectura
+## Requisitos
+
+- Python 3.12 recomendado.
+- PostgreSQL 15+ recomendado para produccion.
+- Chromium de Playwright si se usan descarga automatica de agendas o envio WhatsApp Web.
+- En Linux: paquetes de compilacion basicos y librerias de PostgreSQL si no se usa wheel binario.
+
+## Instalacion Local
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+copy .env.example .env
+notepad .env
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py runserver 0.0.0.0:5000
 ```
 
-## Comandos útiles
+Para Playwright:
+
+```bash
+python -m playwright install chromium
+```
+
+## Configuracion
+
+Variables obligatorias en produccion:
+
+- `SECRET_KEY`
+- `DEBUG=False`
+- `ALLOWED_HOSTS`
+- `CSRF_TRUSTED_ORIGINS`
+- Base de datos: `DATABASE_URL` o `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`
+
+Variables obligatorias solo para integraciones:
+
+- Agenda CEMIC: `CEMIC_USER`, `CEMIC_PASS`
+- WhatsApp Cloud API: `WHATSAPP_CLOUD_PHONE_NUMBER_ID`, `WHATSAPP_CLOUD_ACCESS_TOKEN`
+- Email SMTP: `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`
+
+Variables utiles:
+
+- `PANEL_PUBLIC_BASE_URL`: URL publica usada en links enviados a pacientes.
+- `ANESTHESIA_INFO_URL` y `ANESTHESIA_PDF_PATH`: informacion/adjunto de anestesia.
+- `AUTO_REFRESH_AGENDAS`: activa el scheduler embebido. En Docker se recomienda dejarlo en `0` para el proceso web y usar `agenda-updater`.
+- `SERVE_MEDIA`: solo para desarrollo o despliegues controlados sin Nginx/Apache. En produccion debe quedar `0`.
+- `SECURE_SSL_REDIRECT` y `SECURE_HSTS_SECONDS`: activar solo cuando HTTPS definitivo ya este funcionando.
+
+## Desarrollo
 
 ```bash
 python manage.py check
+python manage.py test
+python manage.py makemigrations --check --dry-run
 python manage.py migrate --check
-python manage.py collectstatic --noinput
 ```
 
-## Levantar con Cloudflare (sin cloudflared en PATH)
+No editar manualmente `staticfiles/`, `.env`, bases SQLite, backups ni archivos de `media/`.
 
-Si necesitás URL publica por Cloudflare y en Windows te falla porque `cloudflared` no está en PATH, podés usar el contenedor incluido en Docker Compose.
+## Produccion Con Docker
 
-1. Levantar app + db + agenda updater:
+Crear `.env` desde `.env.example`, definir `SECRET_KEY`, `POSTGRES_PASSWORD`, hosts y credenciales reales. Luego:
 
 ```bash
-docker compose up --build
+docker compose up --build -d db
+docker compose run --rm web python manage.py migrate
+docker compose run --rm web python manage.py collectstatic --noinput
+docker compose up --build -d web agenda-updater
 ```
 
-2. Levantar también el túnel de Cloudflare (perfil opcional `tunnel`):
+Tunel temporal de Cloudflare, si aplica:
 
 ```bash
-docker compose --profile tunnel up --build
-```
-
-3. Ver la URL pública generada por Cloudflare:
-
-```bash
+docker compose --profile tunnel up -d cloudflared
 docker compose logs -f cloudflared
 ```
 
-En los logs vas a ver una URL `https://...trycloudflare.com` para compartir acceso externo.
+## Datos Persistentes
 
-## Reglas de trabajo
+Respaldar y restaurar:
 
-- No editar `.env` real.
-- No editar manualmente `staticfiles/`.
-- No modificar modelos/base de datos sin plan y confirmación.
-- Separar vistas, consultas y lógica de negocio de forma gradual.
-- Mantener estética institucional CEMIC.
-- Validar después de cada etapa.
+- Base de datos.
+- `media/`.
+- `core/agenda_*_data/` si las agendas portables ya tienen estado manual relevante.
+- `.automation/whatsapp_profile/` solo si se sigue usando WhatsApp Web con sesion de navegador.
 
-Ver más en `docs/architecture.md` y `docs/refactor-plan.md`.
+## Troubleshooting
+
+- Error `SECRET_KEY es obligatoria`: completar `SECRET_KEY` en `.env` o usar `DEBUG=True` solo en desarrollo.
+- Error PostgreSQL sin driver: reinstalar con `pip install -r requirements.txt`.
+- Agenda no descarga: verificar `CEMIC_USER`, `CEMIC_PASS`, conectividad y `python -m playwright install chromium`.
+- Archivos media no se ven en produccion: servir `MEDIA_ROOT` con Nginx/Apache o activar `SERVE_MEDIA=1` solo de forma temporal/controlada.
+- Estatica faltante: ejecutar `python manage.py collectstatic --noinput`.
+
+Ver tambien [MIGRATION.md](MIGRATION.md) y [AUDIT_REPORT.md](AUDIT_REPORT.md).
