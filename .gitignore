@@ -23,6 +23,7 @@ staticfiles/
 .automation/
 .claude/
 tmp/
+backups/
 tools/*.exe
 core/.agenda_*.lock
 core/agenda_*_data/
